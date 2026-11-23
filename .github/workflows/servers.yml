@@ -3,7 +3,6 @@ name: Mail servers
 # Dovecot (from apt) and Stalwart (a pinned release, checked by sha256). See tools/README.md.
 on:
   push:
-    branches: [main]
     paths: ["crates/mail-*/**", "crates/ravenglass-check/**", "crates/ravenglass-engine/**", "tools/dovecot.sh", "tools/stalwart.sh", "Cargo.lock", ".github/workflows/servers.yml"]
   pull_request:
     paths: ["crates/mail-*/**", "crates/ravenglass-check/**", "crates/ravenglass-engine/**", "tools/dovecot.sh", "tools/stalwart.sh", "Cargo.lock", ".github/workflows/servers.yml"]

@@ -38,6 +38,8 @@ fn the_database_file_holds_no_secret_address_or_account_id_in_clear() {
     assert_eq!(reopened.secret(1, &AccountId::from("work-account-id"), SecretKind::Password).unwrap().as_deref(), Some("pw-correct-horse-99"));
     let wrong_key = Store::open(&path, MasterKey::from_bytes([4; 32])).unwrap();
     assert_eq!(wrong_key.accounts(1), Err(StoreError::Sealed), "a different master key opens nothing");
+    // Windows will not delete a database file that is still open.
+    drop((reopened, wrong_key));
     std::fs::remove_dir_all(dir).unwrap();
 }
 
