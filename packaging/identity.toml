@@ -1,0 +1,31 @@
+# The one place for Ravenglass's shipping identity: what the installers, stores and code-signing
+# certificates call the app and its maker. Every value here is a placeholder until the owner
+# chooses a domain and a publisher (packaging/README.md, "Decisions left to a human"). Change a value here, then
+# run `packaging/check-identity.sh --list` to see every file that must change with it; the check
+# runs in CI and fails while any copy disagrees.
+#
+# Hard to change after the first public release: the identifier keys macOS preferences and
+# keychain access groups, the Flatpak app id and the single-instance socket name.
+
+[app]
+identifier = "io.github.jasonkolodziej.Ravenglass"
+product-name = "Ravenglass"
+homepage = "https://github.com/jasonkolodziej/ravenglass"
+
+[publisher]
+# Must match the subject of the signing certificates below for clean Gatekeeper and SmartScreen prompts.
+name = "Ravenglass contributors"
+copyright = "Copyright © 2026 the Ravenglass contributors"
+license = "MIT"
+
+# Certificates are never committed. These name what the release workflow expects to find in the
+# repository's GitHub Actions secrets (packaging/README.md, "Secrets"); leave them empty here.
+[signing.macos]
+# Developer ID Application certificate: secrets APPLE_CERTIFICATE (base64 .p12),
+# APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY; notarization: APPLE_API_KEY_P8,
+# APPLE_API_KEY_ID, APPLE_API_ISSUER.
+team-id = ""
+
+[signing.windows]
+# Authenticode certificate: secrets WINDOWS_CERTIFICATE (base64 .pfx), WINDOWS_CERTIFICATE_PASSWORD.
+subject = ""

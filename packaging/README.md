@@ -22,6 +22,8 @@ packaging/
   windows/          WiX fragment registering Ravenglass as a mail client (Default apps)
   flatpak/          Flatpak manifest
   relay/            Dockerfile, its .dockerignore, docker-compose example, env example
+  identity.toml     bundle id, publisher, copyright, licence, certificate subjects (one place)
+  check-identity.sh fails when a copy of an identity.toml value disagrees with it
   set-version.sh    stamps one SemVer on the app and the Relay (release tags)
   check-size.sh     fails when an installer is over the size budget
 ```
@@ -175,14 +177,16 @@ MSI, Start-menu shortcut and Add/Remove Programs entry use `ravenglass.ico`.
 
 ## Decisions left to a human
 
-- **Bundle identifier**: `io.github.jasonkolodziej.Ravenglass` is a placeholder that Flathub
-  accepts for a GitHub-hosted project. Changing it later breaks macOS preferences/keychain
-  access groups and the Flatpak app id; decide before the first public release. It appears in
-  `app/Cargo.toml`, the metainfo file name and `<id>`, and the Flatpak manifest.
-- **Publisher / copyright holder**: "Ravenglass contributors" (MSI Manufacturer, Info.plist,
-  deb maintainer). Must match the signing certificates' subject for a clean SmartScreen/Gatekeeper
-  story.
-- **License**: the workspace says `MIT OR Apache-2.0` but `LICENSE` is MIT only; the installers
-  ship `LICENSE`.
+- **Identity** (bundle identifier, product name, publisher, copyright, licence, certificate
+  subjects) lives in one file, [`identity.toml`](identity.toml). Its values are placeholders:
+  `io.github.jasonkolodziej.Ravenglass` (a reverse-DNS id Flathub accepts for a GitHub-hosted
+  project) and "Ravenglass contributors". Changing the identifier after the first public release
+  breaks macOS preferences and keychain access groups, the Flatpak app id and the single-instance
+  socket, so decide before then. The publisher must match the signing certificates' subject for
+  clean Gatekeeper and SmartScreen prompts. To change a value, edit `identity.toml`, run
+  `packaging/check-identity.sh --list` to see every copy (`app/Cargo.toml`, `app/src/links_in.rs`,
+  `Info.plist`, the metainfo and Flatpak files, which are named after the id), and update them;
+  `check-identity.sh` runs in the Rust workflow and fails while any copy disagrees.
+- **Licence**: MIT (`LICENSE`), shipped in every installer.
 - **MSI vs MSIX**, winget manifest, Microsoft Store, Mac App Store (needs sandboxing), Flathub
   submission, Sparkle-style auto-update.

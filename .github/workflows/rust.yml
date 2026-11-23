@@ -24,6 +24,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: "snapshots-${{ matrix.os }}", path: out/ }
 
+  # Bundle id, publisher, copyright and licence copies agree with packaging/identity.toml.
+  identity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: packaging/check-identity.sh
+
   # The shared crates must keep compiling for the web build (architecture §3, rule 4).
   # This type-checks them; nothing is linked or run in a browser yet.
   wasm:
