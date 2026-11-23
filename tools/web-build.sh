@@ -30,7 +30,7 @@ while (($#)); do
 done
 cd "$root"
 relay=${relay%/}
-if [[ -n $relay && ! $relay =~ ^https?://[A-Za-z0-9.:\[\]-]+$ ]]; then
+if [[ -n $relay && ! $relay =~ ^https?://[^/[:space:]]+$ ]]; then
     echo "--relay takes an origin like https://relay.example.org (no path)" >&2
     exit 2
 fi

@@ -14,7 +14,7 @@ fn signed(grant: Grant) -> Signed { Signed { grant, who: "odin".into(), accounts
 
 fn signin() -> Session {
     let mut s = Session::default();
-    assert!(step(&mut s, Event::Checked(Err(Problem::Refused))).is_empty());
+    assert!(step(&mut s, Event::Checked(Err(Problem::Refused), Offer::default())).is_empty());
     s
 }
 
@@ -22,7 +22,7 @@ fn signin() -> Session {
 fn a_session_found_at_start_goes_straight_to_the_mail() {
     let mut s = Session::default();
     let ok = signed(Grant::Cookie { csrf: "c".into() });
-    assert_eq!(step(&mut s, Event::Checked(Ok(ok.clone()))), vec![Effect::Start(ok)]);
+    assert_eq!(step(&mut s, Event::Checked(Ok(ok.clone()), Offer::default())), vec![Effect::Start(ok)]);
     assert!(s.is_ready());
 }
 
@@ -31,7 +31,7 @@ fn no_session_shows_the_form_without_an_error_but_an_unreachable_relay_says_so()
     let s = signin();
     assert!(s.form().is_some_and(|f| f.error.is_none()));
     let mut s = Session::default();
-    step(&mut s, Event::Checked(Err(Problem::Offline("Failed to fetch".into()))));
+    step(&mut s, Event::Checked(Err(Problem::Offline("Failed to fetch".into())), Offer::default()));
     assert!(s.form().and_then(|f| f.error.as_deref()).is_some_and(|e| e.starts_with("the relay cannot be reached")));
 }
 
@@ -108,4 +108,33 @@ fn a_refused_token_says_so_and_signing_out_forgets_it() {
 fn grants_never_print_their_secret() {
     assert_eq!(format!("{:?}", Grant::Token("relay-token-0123456789".into())), "Grant::Token");
     assert_eq!(format!("{:?}", Grant::Cookie { csrf: "csrf-value".into() }), "Grant::Cookie");
+}
+
+#[test]
+fn the_form_offers_only_what_the_relay_takes() {
+    let mut s = Session::default();
+    step(&mut s, Event::Checked(Err(Problem::Refused), Offer { password: false, token: true, oidc: false }));
+    assert_eq!(s.form().map(|f| f.field), Some(Field::Token));
+    // Tab stays on the only field; enter sends the token.
+    press(&mut s, K::Tab);
+    typed(&mut s, "relay-token-0123456789");
+    assert_eq!(press(&mut s, K::Enter), vec![Effect::UseToken("relay-token-0123456789".into())]);
+
+    let mut s = Session::default();
+    step(&mut s, Event::Checked(Err(Problem::Refused), Offer { password: true, token: false, oidc: true }));
+    assert_eq!(s.form().map(|f| f.offer.fields()), Some(vec![Field::User, Field::Password, Field::Oidc]));
+    press(&mut s, K::Up);
+    assert_eq!(s.form().map(|f| f.field), Some(Field::Oidc));
+    assert_eq!(press(&mut s, K::Enter), vec![Effect::Oidc]);
+}
+
+#[test]
+fn rate_limiting_says_when_to_try_again() {
+    let mut s = signin();
+    typed(&mut s, "odin");
+    press(&mut s, K::Tab);
+    typed(&mut s, "password12");
+    press(&mut s, K::Enter);
+    step(&mut s, Event::Answered(Err(Problem::Busy(Some(30)))));
+    assert_eq!(s.form().and_then(|f| f.error.as_deref()), Some("too many attempts · try again in 30 s"));
 }

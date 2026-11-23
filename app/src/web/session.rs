@@ -42,26 +42,42 @@ pub enum Problem {
     Refused,
     /// The Relay could not be reached.
     Offline(String),
+    /// Too many attempts (429); try again after this many seconds, if the Relay said.
+    Busy(Option<u32>),
     /// Anything else the Relay answered.
     Relay(String),
 }
 
-/// The sign-in form's fields, in focus order.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Field { #[default] User, Password, Token }
+/// The sign-in methods a Relay offers (`GET /v1/auth/config`): a single-user Relay takes its
+/// token, a multi-user one a username and password and/or an identity provider (OIDC). A Relay
+/// that does not say is offered both forms, without OIDC.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Offer { pub password: bool, pub token: bool, pub oidc: bool }
 
-impl Field {
-    const ALL: [Field; 3] = [Field::User, Field::Password, Field::Token];
-    fn next(self, back: bool) -> Field {
-        let at = Field::ALL.iter().position(|f| *f == self).unwrap_or(0);
-        Field::ALL[(at + if back { Field::ALL.len() - 1 } else { 1 }) % Field::ALL.len()]
+impl Default for Offer {
+    fn default() -> Offer { Offer { password: true, token: true, oidc: false } }
+}
+
+impl Offer {
+    /// The form's fields for this offer, in focus order.
+    pub fn fields(self) -> Vec<Field> {
+        let mut out = Vec::new();
+        if self.password { out.extend([Field::User, Field::Password]); }
+        if self.oidc { out.push(Field::Oidc); }
+        if self.token || out.is_empty() { out.push(Field::Token); }
+        out
     }
 }
+
+/// The sign-in form's fields. `Oidc` is the "sign in with your identity provider" line.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Field { #[default] User, Password, Oidc, Token }
 
 /// The longest username taken, in characters.
 const MAX_USER: usize = 128;
 
 pub struct Form {
+    pub offer: Offer,
     pub field: Field,
     pub user: String,
     pub password: Secret,
@@ -71,11 +87,19 @@ pub struct Form {
 }
 
 impl Default for Form {
-    fn default() -> Form { Form { field: Field::User, user: String::new(), password: Secret::new(), token: Secret::new(), error: None } }
+    fn default() -> Form { Form::new(Offer::default(), None) }
 }
 
 impl Form {
-    fn with_error(error: Option<String>) -> Form { Form { error, ..Form::default() } }
+    fn new(offer: Offer, error: Option<String>) -> Form {
+        Form { offer, field: offer.fields()[0], user: String::new(), password: Secret::new(), token: Secret::new(), error }
+    }
+
+    fn next(&mut self, back: bool) {
+        let fields = self.offer.fields();
+        let at = fields.iter().position(|f| *f == self.field).unwrap_or(0);
+        self.field = fields[(at + if back { fields.len() - 1 } else { 1 }) % fields.len()];
+    }
 
     /// The typed secrets go as soon as they have been sent.
     fn wipe(&mut self) {
@@ -104,8 +128,8 @@ impl Session {
 }
 
 pub enum Event {
-    /// The answer to the check made at start.
-    Checked(Result<Signed, Problem>),
+    /// The answer to the check made at start, with what the Relay offers.
+    Checked(Result<Signed, Problem>, Offer),
     Key(KeyPress),
     /// The answer to a sign-in.
     Answered(Result<Signed, Problem>),
@@ -119,6 +143,8 @@ pub enum Effect {
     Login { user: String, password: String },
     /// Open a protocol session with this bearer token.
     UseToken(String),
+    /// Leave for the Relay's OIDC sign-in (`/v1/auth/oidc/start`); it comes back signed in.
+    Oidc,
     /// Build the engine over these accounts.
     Start(Signed),
     /// Keep the token for this tab (`sessionStorage`), so a reload does not ask again.
@@ -131,9 +157,9 @@ pub enum Effect {
 pub fn step(state: &mut Session, event: Event) -> Vec<Effect> {
     let current = std::mem::take(state);
     let (next, effects) = match (current, event) {
-        (Session::Checking, Event::Checked(Ok(signed))) => (Session::Ready(signed.clone()), vec![Effect::Start(signed)]),
+        (Session::Checking, Event::Checked(Ok(signed), _)) => (Session::Ready(signed.clone()), vec![Effect::Start(signed)]),
         // No session yet is the usual start; only a Relay that cannot be reached is worth a line.
-        (Session::Checking, Event::Checked(Err(problem))) => (Session::SignIn(Form::with_error(match problem {
+        (Session::Checking, Event::Checked(Err(problem), offer)) => (Session::SignIn(Form::new(offer, match problem {
             Problem::Refused => None,
             other => Some(describe(&other, false)),
         })), Vec::new()),
@@ -155,7 +181,10 @@ pub fn step(state: &mut Session, event: Event) -> Vec<Effect> {
             form.error = Some(describe(&problem, by_token));
             (Session::SignIn(form), Vec::new())
         }
-        (Session::Ready(_), Event::SignedOut) => (Session::SignIn(Form::with_error(Some("signed out of the relay".into()))), vec![Effect::Forget]),
+        (Session::Ready(signed), Event::SignedOut) => {
+            let offer = match signed.grant { Grant::Token(_) => Offer { password: false, token: true, oidc: false }, Grant::Cookie { .. } => Offer::default() };
+            (Session::SignIn(Form::new(offer, Some("signed out of the relay".into()))), vec![Effect::Forget])
+        }
         (other, _) => (other, Vec::new()),
     };
     *state = next;
@@ -166,19 +195,21 @@ pub fn step(state: &mut Session, event: Event) -> Vec<Effect> {
 fn key(form: &mut Form, press: KeyPress) -> Vec<Effect> {
     if press.ctrl || press.cmd { return Vec::new(); }
     match press.key {
-        K::Tab => form.field = form.field.next(press.shift),
-        K::Down => form.field = form.field.next(false),
-        K::Up => form.field = form.field.next(true),
+        K::Tab => form.next(press.shift),
+        K::Down => form.next(false),
+        K::Up => form.next(true),
         K::Backspace => match form.field {
             Field::User => { form.user.pop(); }
             Field::Password => form.password.pop(),
             Field::Token => form.token.pop(),
+            Field::Oidc => {}
         },
         K::Esc => form.error = None,
         K::Char(c) if !c.is_control() => match form.field {
             Field::User => if form.user.chars().count() < MAX_USER { form.user.push(c) },
             Field::Password => form.password.push(c),
             Field::Token => form.token.push(c),
+            Field::Oidc => {}
         },
         K::Enter => return submit(form),
         _ => {}
@@ -188,7 +219,8 @@ fn key(form: &mut Form, press: KeyPress) -> Vec<Effect> {
 
 /// `enter`: the token if the token field is the one in use, else username and password.
 fn submit(form: &mut Form) -> Vec<Effect> {
-    let by_token = form.field == Field::Token || (form.user.trim().is_empty() && !form.token.is_empty());
+    if form.field == Field::Oidc { return vec![Effect::Oidc]; }
+    let by_token = form.field == Field::Token || !form.offer.password || (form.user.trim().is_empty() && !form.token.is_empty());
     if by_token {
         if form.token.is_empty() {
             form.error = Some("type the relay's token".into());
@@ -214,6 +246,8 @@ fn describe(problem: &Problem, by_token: bool) -> String {
     match problem {
         Problem::Refused if by_token => "the relay did not take that token".into(),
         Problem::Refused => "wrong username or password".into(),
+        Problem::Busy(Some(secs)) => format!("too many attempts · try again in {secs} s"),
+        Problem::Busy(None) => "too many attempts · try again later".into(),
         Problem::Offline(why) => format!("the relay cannot be reached · {}", first_line(why)),
         Problem::Relay(why) => format!("the relay refused · {}", first_line(why)),
     }
