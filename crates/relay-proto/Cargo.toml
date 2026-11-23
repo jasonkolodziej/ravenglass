@@ -8,5 +8,7 @@ description = "Ravenglass Relay API v1: the versioned contract between the web c
 
 [dependencies]
 mail-core = { path = "../mail-core" }
+# Account settings for the per-user account routes; no keyring, so it still builds for wasm.
+mail-auth = { path = "../mail-auth", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
