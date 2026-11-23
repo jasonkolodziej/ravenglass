@@ -65,7 +65,13 @@ fn with_password(temp: &TempProfile, config: &str) -> AppState {
 
 #[test]
 fn the_lock_screen_holds_no_list_no_reader_and_no_subject() {
-    let mut rt = runtime(triage());
+    // A passcode set out of band: the demo has nothing else that could open the lock.
+    let state = triage();
+    mail_auth::passcode::set(state.shell.services.secrets.as_ref(), "ravens 7").expect("the store");
+    let mut state = state;
+    state.shell.passcode = true;
+    state.rearm_lock();
+    let mut rt = runtime(state);
     let subject = rt.state.ws().open.as_ref().expect("an open message").subject.clone();
     let sender = rt.state.selected().expect("a row").from.email.clone();
     let before = rt.elements();
@@ -87,17 +93,135 @@ fn the_lock_screen_holds_no_list_no_reader_and_no_subject() {
 }
 
 #[test]
-fn locking_from_the_command_line_and_any_key_lifts_a_lock_with_no_password_account() {
+fn with_nothing_to_check_against_lock_asks_for_a_passcode_instead_of_a_curtain() {
     let mut rt = runtime(triage());
     type_keys(&mut rt, ":lock");
     press(&mut rt, Key::Enter);
-    assert!(rt.state.shell.lock.concealed());
-    assert!(rt.state.toast.is_none() && rt.state.mode == crate::modes::Mode::default());
-    // The demo has no password to ask for: the lock is a curtain.
-    press(&mut rt, Key::Text("j".into()));
-    assert!(!rt.state.shell.lock.concealed());
-    assert!(rt.elements().iter().any(|e| e.role == "listitem"), "the list is back");
-    assert_eq!(rt.state.ws().sel, 0, "the key that lifted the lock did nothing else");
+    // The demo has no password account and no passcode: locking would be a curtain anyone lifts.
+    assert!(!rt.state.shell.lock.concealed(), "nothing could open it, so it does not close");
+    assert!(rt.state.shell.passcode_setup.is_some(), "the passcode setup opens instead");
+    let shown = texts(&rt.elements());
+    assert!(shown.contains("New passcode") && !shown.contains("Inbox"), "{shown}");
+    press(&mut rt, Key::Escape);
+    assert!(rt.state.shell.passcode_setup.is_none() && rt.elements().iter().any(|e| e.role == "listitem"));
+}
+
+/// Set a passcode through the setup screen, typed as a user would.
+fn set_passcode(rt: &mut Runtime<AppState>, passcode: &str) {
+    type_keys(rt, ":lock passcode");
+    press(rt, Key::Enter);
+    type_keys(rt, passcode);
+    press(rt, Key::Enter);
+    type_keys(rt, passcode);
+    press(rt, Key::Enter);
+}
+
+#[test]
+fn a_passcode_is_set_twice_typed_masked_and_then_opens_the_lock() {
+    let mut rt = runtime(triage());
+    type_keys(&mut rt, ":lock passcode");
+    press(&mut rt, Key::Enter);
+    type_keys(&mut rt, "12345");
+    press(&mut rt, Key::Enter);
+    assert!(texts(&rt.elements()).contains("too short"), "fewer than six characters is refused");
+    type_keys(&mut rt, "ravens 7");
+    let shown = texts(&rt.elements());
+    assert!(shown.contains("••••••••") && !shown.contains("ravens"), "{shown}");
+    press(&mut rt, Key::Enter);
+    type_keys(&mut rt, "ravens 8");
+    press(&mut rt, Key::Enter);
+    assert!(texts(&rt.elements()).contains("did not match"));
+    assert!(!rt.state.shell.passcode, "nothing is stored until both match");
+
+    type_keys(&mut rt, "ravens 7");
+    press(&mut rt, Key::Enter);
+    type_keys(&mut rt, "ravens 7");
+    press(&mut rt, Key::Enter);
+    assert!(rt.state.shell.passcode && rt.state.shell.passcode_setup.is_none());
+    let stored = rt.state.shell.services.secrets.get(&mail_auth::passcode::store_id(), SecretKind::Password).unwrap().unwrap();
+    assert!(stored.starts_with("$argon2id$") && !stored.contains("ravens"), "only a hash is stored");
+
+    lock(&mut rt);
+    press(&mut rt, Key::Text("x".into()));
+    assert!(texts(&rt.elements()).contains("Locked · passcode"));
+    type_keys(&mut rt, "ravens 8");
+    press(&mut rt, Key::Enter);
+    assert!(rt.state.shell.lock.concealed(), "the wrong passcode stays locked");
+    type_keys(&mut rt, "ravens 7");
+    press(&mut rt, Key::Enter);
+    assert!(!rt.state.shell.lock.concealed(), "the right one opens it");
+}
+
+#[test]
+fn changing_or_removing_the_passcode_needs_the_current_one() {
+    let mut rt = runtime(triage());
+    set_passcode(&mut rt, "ravens 7");
+    type_keys(&mut rt, ":lock passcode off");
+    press(&mut rt, Key::Enter);
+    assert!(texts(&rt.elements()).contains("Current passcode"));
+    type_keys(&mut rt, "guess it");
+    press(&mut rt, Key::Enter);
+    assert!(texts(&rt.elements()).contains("that was not the passcode") && rt.state.shell.passcode);
+    type_keys(&mut rt, "ravens 7");
+    press(&mut rt, Key::Enter);
+    assert!(!rt.state.shell.passcode && !rt.state.shell.lock.armed(), "removed, and the demo has nothing else to open the lock");
+
+    set_passcode(&mut rt, "ravens 7");
+    type_keys(&mut rt, ":lock passcode");
+    press(&mut rt, Key::Enter);
+    type_keys(&mut rt, "ravens 7");
+    press(&mut rt, Key::Enter);
+    assert!(texts(&rt.elements()).contains("New passcode"), "the current one opens the change");
+    type_keys(&mut rt, "huginn 9");
+    press(&mut rt, Key::Enter);
+    type_keys(&mut rt, "huginn 9");
+    press(&mut rt, Key::Enter);
+    assert!(mail_auth::passcode::check(rt.state.shell.services.secrets.as_ref(), "huginn 9"));
+}
+
+#[test]
+fn wrong_answers_are_throttled_after_three() {
+    use crate::lock::wait_after;
+    assert_eq!((wait_after(0), wait_after(2), wait_after(3), wait_after(4)), (0.0, 0.0, 5.0, 10.0));
+    assert_eq!(wait_after(40), 900.0, "capped at fifteen minutes");
+
+    let mut rt = runtime(triage());
+    set_passcode(&mut rt, "ravens 7");
+    lock(&mut rt);
+    press(&mut rt, Key::Text("x".into()));
+    for _ in 0..3 {
+        type_keys(&mut rt, "wrong one");
+        press(&mut rt, Key::Enter);
+    }
+    assert!(rt.state.shell.lock.waiting(rt.state.clock).is_some(), "the third wrong answer starts a wait");
+    assert!(texts(&rt.elements()).contains("too many tries"));
+    type_keys(&mut rt, "ravens 7");
+    press(&mut rt, Key::Enter);
+    assert!(rt.state.shell.lock.concealed(), "not even the right answer is taken during the wait");
+    // Six seconds of frames: the app clock follows the runtime's.
+    for _ in 0..360 { rt.frame(FRAME); }
+    press(&mut rt, Key::Enter);
+    assert!(!rt.state.shell.lock.concealed(), "after the wait the typed answer is taken");
+}
+
+#[test]
+fn a_lock_on_launch_with_nothing_to_open_it_stays_open_and_says_so() {
+    let temp = TempProfile::new("lock-unarmed");
+    temp.write("config.toml", "[privacy]\nlock_on_launch = true\nlock_after_minutes = 1\n");
+    let s = real_state(&temp, Arc::new(MemorySecrets::default()));
+    assert!(!s.shell.lock.concealed() && !s.shell.lock.armed());
+    assert!(s.toast.as_ref().is_some_and(|t| t.error && t.text.contains(":lock passcode")), "{:?}", s.toast.as_ref().map(|t| &t.text));
+}
+
+#[test]
+fn a_passcode_takes_precedence_over_an_account_password() {
+    let temp = TempProfile::new("lock-both");
+    temp.profile().save_accounts(&[local_account("home")]).expect("saved");
+    let secrets = Arc::new(MemorySecrets::default());
+    secrets.set(&AccountId::from("home"), SecretKind::Password, PASSWORD).expect("the store");
+    mail_auth::passcode::set(secrets.as_ref(), "ravens 7").expect("the store");
+    let s = real_state(&temp, secrets);
+    assert_eq!(s.shell.verifier(), Some(crate::shell::Verifier::Passcode));
 }
 
 #[test]
@@ -113,10 +237,10 @@ fn keys_reach_nothing_while_locked_and_only_the_right_password_unlocks() {
     assert_eq!(rt.state.mode, crate::modes::Mode::default(), "the key did not open the command line");
     type_keys(&mut rt, "not it");
     let shown = texts(&rt.elements());
-    assert!(shown.contains("home password") && shown.contains("••••••") && !shown.contains("not it"), "{shown}");
+    assert!(shown.contains("home password") && shown.contains("••••••") && !shown.contains("not it "), "{shown}");
     press(&mut rt, Key::Enter);
     assert!(rt.state.shell.lock.concealed() && rt.state.shell.lock.refused, "a wrong password stays locked");
-    assert!(texts(&rt.elements()).contains("that was not the password"));
+    assert!(texts(&rt.elements()).contains("that was not it"));
 
     type_keys(&mut rt, PASSWORD);
     assert!(!texts(&rt.elements()).contains("sesame"));

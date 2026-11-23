@@ -23,6 +23,7 @@ mod links;
 mod lock;
 mod modes;
 mod panes;
+mod passcode;
 mod platform;
 mod profile;
 mod scenes;

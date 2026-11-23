@@ -78,6 +78,10 @@ accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "0ca07561
 [patch."https://github.com/anomalyco/rune"]
 rune-taffy = { path = "vendor/rune-taffy" }
 
+# Argon2 is deliberately slow; unoptimised it takes seconds per hash in debug builds and tests.
+[profile.dev.package.argon2]
+opt-level = 3
+
 [profile.perf]
 inherits = "release"
 debug = 1

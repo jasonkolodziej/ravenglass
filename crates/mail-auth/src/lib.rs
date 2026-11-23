@@ -10,11 +10,14 @@
 //! - [`secrets`]: passwords and refresh tokens in the OS keyring. They are never written to
 //!   config files, the store or logs, and none of these types print a secret in `Debug`.
 //!
-//! Not here yet: the biometric app lock and SRV-record lookup.
+//! - [`passcode`]: the app-lock passcode, stored only as an Argon2id hash.
+//!
+//! Not here yet: SRV-record lookup.
 
 pub mod autoconfig;
 pub mod config;
 pub mod oauth;
+pub mod passcode;
 pub mod secrets;
 
 pub use config::{AccountConfig, AuthKind, Incoming, Security, Server};

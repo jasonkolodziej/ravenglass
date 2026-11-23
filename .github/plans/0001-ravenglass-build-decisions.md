@@ -20,6 +20,6 @@ in place of asking, with the reason and the cost of changing course. Product dec
 | 10 | JMAP has no push; the engine polls every five minutes | EventSource needs a streaming HTTP client | A JMAP account is in daily use |
 | 11 | Drafts are plain text | Rich text needs an editor model first | The compose pane grows formatting |
 | 12 | OAuth ships with no client id; ids come from the environment | Registering an app with Google or Microsoft is the owner's to do | The owner registers clients |
-| 13 | The biometric lock's portable default is the account password | Touch ID and Windows Hello need platform code that could not be tested here | Someone can build and test on macOS and Windows |
+| 13 | The lock's portable default is a local passcode (Argon2id hash in the OS keyring), else an account password; with neither, the lock does not close | Touch ID and Windows Hello need platform code that could not be tested here; a curtain anyone can lift is not a lock (owner, 2026-11-23) | Someone can build and test on macOS and Windows |
 | 14 | Bodies are cached uncompressed | zstd is a C dependency or a slower pure-Rust one; size was not a problem yet | The body cache is seen to be large |
 | 15 | Code is not `rustfmt`-formatted | The handed-over code was not, and reformatting it would bury every diff | The owner picks a format and it is applied in one commit |

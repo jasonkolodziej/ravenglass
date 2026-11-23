@@ -10,8 +10,11 @@ use rune::{El, el};
 pub fn caption(s: &AppState) -> String {
     let lock = &s.shell.lock;
     if !lock.prompting() { return "Locked · press any key".into(); }
-    let who = s.shell.verifier().map(|id| id.0).unwrap_or_default();
-    format!("Locked · {who} password  {}_", lock.input.masked())
+    let who = s.shell.verifier().map(|v| v.label()).unwrap_or_default();
+    match lock.waiting(s.clock) {
+        Some(secs) => format!("Locked · too many tries · wait {}s", secs.ceil() as u64),
+        None => format!("Locked · {who}  {}_", lock.input.masked()),
+    }
 }
 
 fn hints(s: &AppState) -> &'static str {
@@ -19,7 +22,7 @@ fn hints(s: &AppState) -> &'static str {
     match (lock.prompting(), lock.checking, lock.refused) {
         (false, ..) => "",
         (true, true, _) => "checking",
-        (true, false, true) => "that was not the password    enter unlock    esc back",
+        (true, false, true) => "that was not it    enter unlock    esc back",
         (true, false, false) => "enter unlock    esc back",
     }
 }
@@ -29,4 +32,11 @@ pub fn screen(s: &AppState, ui: &Ui, cols: usize, rows: usize) -> El {
     el().key(ROOT).w_full().h_full().fill(ui.p.bg)
         .child(el().key("lock").role("region").label("Locked").absolute(0.0, 0.0).size(ui.g.x(cols), ui.g.y(rows)).window_drag()
             .child(wallpaper::pane(ui, "lock", Rect::new(0, 0, cols, rows), &caption, hints(s))))
+}
+
+/// The passcode setup: like the lock, the whole window, so nothing typed sits next to mail.
+pub fn passcode_screen(setup: &crate::passcode::Setup, ui: &Ui, cols: usize, rows: usize) -> El {
+    el().key(ROOT).w_full().h_full().fill(ui.p.bg)
+        .child(el().key("passcode").role("region").label("App lock passcode").absolute(0.0, 0.0).size(ui.g.x(cols), ui.g.y(rows)).window_drag()
+            .child(wallpaper::pane(ui, "passcode", Rect::new(0, 0, cols, rows), &setup.caption(), &setup.hint())))
 }

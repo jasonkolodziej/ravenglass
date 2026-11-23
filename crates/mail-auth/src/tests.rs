@@ -113,3 +113,23 @@ fn memory_secrets_are_per_account_and_kind() {
     store.delete_all(&a).unwrap();
     assert_eq!((store.get(&a, SecretKind::Password).unwrap(), store.get(&a, SecretKind::RefreshToken).unwrap()), (None, None));
 }
+
+#[test]
+fn a_passcode_is_stored_only_as_a_salted_hash_and_checks_exactly() {
+    use crate::passcode;
+    let store = MemorySecrets::default();
+    assert!(!passcode::is_set(&store).unwrap() && !passcode::check(&store, "anything"));
+    assert_eq!(passcode::set(&store, "12345"), Err(passcode::PasscodeError::TooShort));
+    passcode::set(&store, "ravens 7").unwrap();
+    let stored = store.get(&passcode::store_id(), SecretKind::Password).unwrap().unwrap();
+    assert!(stored.starts_with("$argon2id$") && !stored.contains("ravens"), "{stored}");
+    assert!(passcode::check(&store, "ravens 7"));
+    for wrong in ["ravens7", "Ravens 7", "ravens 7 ", ""] { assert!(!passcode::check(&store, wrong), "{wrong:?}"); }
+    // A fresh salt each time: the same passcode never hashes the same way twice.
+    assert_ne!(passcode::hash("ravens 7").unwrap(), passcode::hash("ravens 7").unwrap());
+    assert!(!passcode::verify("ravens 7", "not a hash"));
+    // No account id can collide with the passcode's place in the store.
+    assert!(passcode::store_id().0.contains(':'));
+    passcode::clear(&store).unwrap();
+    assert!(!passcode::is_set(&store).unwrap() && !passcode::check(&store, "ravens 7"));
+}

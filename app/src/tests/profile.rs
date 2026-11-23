@@ -239,7 +239,10 @@ fn a_user_theme_takes_its_id_from_its_file_and_cannot_replace_a_built_in() {
 fn config_toml_sets_the_theme_the_reader_and_the_privacy_choices() {
     let temp = TempProfile::new("apply");
     temp.write("config.toml", "[ui]\ntheme = \"ravenglass-frost\"\nreader_default = \"text\"\nhtml_dark = \"darken\"\n[privacy]\nremote_images = \"never\"\nlock_after_minutes = 5\n");
-    let mut s = real_state(&temp, Arc::new(MemorySecrets::default()));
+    // A passcode, so the idle lock has something that can open it.
+    let secrets = Arc::new(MemorySecrets::default());
+    mail_auth::passcode::set(secrets.as_ref(), "ravens 7").expect("the store");
+    let mut s = real_state(&temp, secrets);
     assert_eq!(s.theme.id, "ravenglass-frost");
     assert_eq!(s.reader_view, ReaderView::Text);
     assert!(!s.images_offered());
