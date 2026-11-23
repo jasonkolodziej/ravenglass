@@ -3,6 +3,8 @@
 use super::{Mode, Principal, Refusal, Shared, UsersConfig, error, json};
 use crate::crypto::{self, PasswordCost};
 use crate::hub::{Hub, Pushed};
+use crate::jose;
+use crate::jwks::{self, KeyCache, Plan};
 use crate::oidc::{self, Effect, Event, OidcError, Provider};
 use crate::outbound::{self, AddressPolicy, Request as Outgoing};
 use crate::ratelimit::Limiter;
@@ -34,6 +36,9 @@ pub struct Oidc {
     issuer: String,
     client: oidc::Client,
     provider: tokio::sync::Mutex<Option<Provider>>,
+    verify_signatures: bool,
+    /// Held across a key fetch, so concurrent sign-ins share one fetch.
+    keys: tokio::sync::Mutex<KeyCache>,
     flows: Mutex<HashMap<String, (oidc::State, u64)>>,
 }
 
@@ -52,7 +57,14 @@ pub struct Users {
 
 impl Users {
     pub fn new(config: &UsersConfig, pushes: broadcast::Sender<Pushed>) -> Self {
-        let oidc = config.oidc.as_ref().map(|o| Oidc { issuer: o.issuer.clone(), client: o.client.clone(), provider: tokio::sync::Mutex::new(None), flows: Mutex::new(HashMap::new()) });
+        let oidc = config.oidc.as_ref().map(|o| Oidc {
+            issuer: o.issuer.clone(),
+            client: o.client.clone(),
+            provider: tokio::sync::Mutex::new(None),
+            verify_signatures: o.verify_signatures,
+            keys: tokio::sync::Mutex::new(KeyCache::default()),
+            flows: Mutex::new(HashMap::new()),
+        });
         Self {
             store: config.store.clone(),
             hub: Hub::new(config.store.clone(), config.opener.clone(), pushes, config.clock.clone()),
@@ -193,6 +205,44 @@ async fn provider(oidc: &Oidc) -> Result<Provider, OidcError> {
     Ok(provider)
 }
 
+/// Fetch the provider's key set into the cache. `None` when it cannot be had; the failure is
+/// remembered, so the next attempt waits [`jwks::MIN_REFETCH`].
+async fn fetch_keys(cache: &mut KeyCache, provider: &Provider, now: u64) -> Option<Arc<jose::KeySet>> {
+    let fetched = async {
+        let url = url::Url::parse(provider.jwks_uri.as_deref()?).ok()?;
+        let mut request = Outgoing::get(url);
+        request.headers.push(("accept", "application/jwk-set+json, application/json".into()));
+        let reply = idp(request).await.ok()?;
+        if reply.status != 200 { return None; }
+        Some((jose::parse_key_set(&reply.body)?, jwks::lifetime(reply.header("cache-control"))))
+    };
+    match fetched.await {
+        Some((keys, lifetime)) => { cache.fetched(keys, lifetime, now); cache.keys() }
+        None => { cache.failed(now); None }
+    }
+}
+
+/// Check an ID token's signature against the provider's keys, refetching them once if the
+/// token names a key the cached set does not have. Never logs the token.
+async fn signature_valid(oidc: &Oidc, provider: &Provider, id_token: &str, now: u64) -> bool {
+    if !oidc.verify_signatures { return true; }
+    let mut cache = oidc.keys.lock().await;
+    let keys = match cache.plan(now) {
+        Plan::Use => cache.keys(),
+        Plan::Fetch => match fetch_keys(&mut cache, provider, now).await { Some(keys) => Some(keys), None => cache.keys() },
+        Plan::Refuse => None,
+    };
+    let Some(keys) = keys else { return false };
+    match jose::verify(id_token, &keys) {
+        Ok(_) => true,
+        Err(jose::JoseError::UnknownKey) if cache.plan_unknown_key(now) == Plan::Fetch => match fetch_keys(&mut cache, provider, now).await {
+            Some(keys) => jose::verify(id_token, &keys).is_ok(),
+            None => false,
+        },
+        Err(_) => false,
+    }
+}
+
 fn page(status: StatusCode, text: &str) -> Response { (status, [(header::CONTENT_TYPE, "text/plain; charset=utf-8")], text.to_owned()).into_response() }
 
 fn see_other(location: &str) -> Response {
@@ -260,6 +310,7 @@ async fn finish(shared: &Shared, users: &Users, oidc: &Oidc, flow: oidc::State, 
                 let reply = idp(request).await?;
                 Event::Tokens { status: reply.status, body: String::from_utf8_lossy(&reply.body).into_owned(), now: shared.now() }
             }
+            Some(Effect::CheckSignature { id_token }) => Event::Signature { valid: signature_valid(oidc, &provider, &id_token, shared.now()).await },
             Some(Effect::GetUserInfo { url, access_token }) => {
                 let mut request = Outgoing::get(url::Url::parse(&url).map_err(|_| OidcError::UserInfo("bad userinfo endpoint"))?);
                 request.headers.push(("authorization", format!("Bearer {access_token}")));

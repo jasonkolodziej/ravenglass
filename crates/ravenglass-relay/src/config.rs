@@ -43,6 +43,7 @@ struct OidcFile {
     scopes: Option<String>,
     allowed_emails: Option<Vec<String>>,
     allowed_domains: Option<Vec<String>>,
+    verify_signatures: Option<bool>,
 }
 
 pub struct OidcSettings {
@@ -53,6 +54,8 @@ pub struct OidcSettings {
     pub scopes: String,
     pub allowed_emails: Vec<String>,
     pub allowed_domains: Vec<String>,
+    /// Check ID-token signatures against the provider's keys (default on).
+    pub verify_signatures: bool,
 }
 
 pub struct UsersSettings {
@@ -144,6 +147,7 @@ pub fn load(env: &dyn Fn(&str) -> Option<String>) -> Result<Settings, String> {
                         scopes: text("OIDC_SCOPES", &oidc_file.scopes).unwrap_or_else(|| "openid email profile".into()),
                         allowed_emails,
                         allowed_domains,
+                        verify_signatures: flag("OIDC_VERIFY_SIGNATURES", oidc_file.verify_signatures, true)?,
                     })
                 }
             };

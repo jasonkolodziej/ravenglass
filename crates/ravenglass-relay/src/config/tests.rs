@@ -34,6 +34,34 @@ fn users_mode_from_the_environment_alone() {
     assert_eq!(oidc.redirect_uri, "https://relay.example.org/v1/auth/oidc/callback");
     assert_eq!(oidc.allowed_domains, ["example.org", "example.net"]);
     assert_eq!(oidc.scopes, "openid email profile");
+    assert!(oidc.verify_signatures, "signatures are checked by default");
+}
+
+#[test]
+fn signature_checks_can_be_turned_off_from_the_environment_or_the_file() {
+    let base = [("RAVENGLASS_RELAY_AUTH", "users"), ("RAVENGLASS_RELAY_OIDC_ISSUER", "https://idp.example"), ("RAVENGLASS_RELAY_OIDC_CLIENT_ID", "c"), ("RAVENGLASS_RELAY_PUBLIC_URL", "https://r.example")];
+    let oidc = |extra: &[(&str, &str)]| {
+        let vars: Vec<(&str, &str)> = base.iter().chain(extra).copied().collect();
+        let ModeSettings::Users(users) = load_from(&vars).unwrap().mode else { panic!() };
+        users.oidc.unwrap().verify_signatures
+    };
+    assert!(!oidc(&[("RAVENGLASS_RELAY_OIDC_VERIFY_SIGNATURES", "false")]));
+    assert!(oidc(&[("RAVENGLASS_RELAY_OIDC_VERIFY_SIGNATURES", "on")]));
+    let vars: Vec<(&str, &str)> = base.iter().copied().chain([("RAVENGLASS_RELAY_OIDC_VERIFY_SIGNATURES", "perhaps")]).collect();
+    assert!(load_from(&vars).err().unwrap().contains("OIDC_VERIFY_SIGNATURES"));
+
+    let dir = std::env::temp_dir().join(format!("rg-relay-config-{}", crate::crypto::random_token(6)));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("relay.toml");
+    std::fs::write(&path, "auth = \"users\"\npublic_url = \"https://r.example\"\n[oidc]\nissuer = \"https://idp.example\"\nclient_id = \"c\"\nverify_signatures = false\n").unwrap();
+    let from_file = |extra: &[(&str, &str)]| {
+        let vars: Vec<(&str, &str)> = [("RAVENGLASS_RELAY_CONFIG", path.to_str().unwrap())].into_iter().chain(extra.iter().copied()).collect();
+        let ModeSettings::Users(users) = load_from(&vars).unwrap().mode else { panic!() };
+        users.oidc.unwrap().verify_signatures
+    };
+    assert!(!from_file(&[]));
+    assert!(from_file(&[("RAVENGLASS_RELAY_OIDC_VERIFY_SIGNATURES", "true")]), "the environment wins");
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

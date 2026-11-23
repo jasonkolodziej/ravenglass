@@ -4,10 +4,13 @@
 //! [`Event`]s (the browser's callback, the token endpoint's answer, the userinfo answer) and
 //! carries out the [`Effect`] each step returns. No I/O happens here.
 //!
-//! The ID token arrives directly from the token endpoint over a TLS connection the Relay opened
-//! to the configured issuer, so, as OIDC Core 3.1.3.7 allows, TLS server authentication stands
-//! in for checking its signature; its `iss`, `aud`, `azp`, `exp` and `nonce` are all checked.
-//! The user is then identified at the userinfo endpoint, whose `sub` must match the ID token's.
+//! The ID token's signature is checked against the provider's published keys before any of its
+//! claims are read: the flow asks for that with [`Effect::CheckSignature`] and the server answers
+//! with [`Event::Signature`] (see [`crate::jose`]). With signature checks turned off, the server
+//! answers "valid" at once and, as OIDC Core 3.1.3.7 allows, the TLS connection the Relay opened
+//! to the token endpoint stands in for the signature. Either way its `iss`, `aud`, `azp`, `exp`
+//! and `nonce` are all checked, and the user is then identified at the userinfo endpoint, whose
+//! `sub` must match the ID token's.
 
 use crate::crypto::{random_token, same};
 use base64::Engine;
@@ -18,6 +21,8 @@ use url::Url;
 pub const FLOW_LIFETIME: u64 = 10 * 60;
 /// Clock skew tolerated on `exp`.
 const LEEWAY: u64 = 60;
+/// The one error for every ID token whose signature is refused, whatever the reason.
+pub const BAD_SIGNATURE: OidcError = OidcError::Token("its signature does not verify");
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OidcError {
@@ -52,7 +57,15 @@ impl std::fmt::Display for OidcError {
 
 /// The endpoints from `/.well-known/openid-configuration`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-pub struct Provider { pub issuer: String, pub authorization_endpoint: String, pub token_endpoint: String, pub userinfo_endpoint: String }
+pub struct Provider {
+    pub issuer: String,
+    pub authorization_endpoint: String,
+    pub token_endpoint: String,
+    pub userinfo_endpoint: String,
+    /// Where the provider publishes its signing keys. Required when signatures are checked.
+    #[serde(default)]
+    pub jwks_uri: Option<String>,
+}
 
 /// Where the discovery document for `issuer` lives.
 pub fn discovery_url(issuer: &str) -> String { format!("{}/.well-known/openid-configuration", issuer.trim_end_matches('/')) }
@@ -61,7 +74,7 @@ pub fn discovery_url(issuer: &str) -> String { format!("{}/.well-known/openid-co
 pub fn parse_discovery(json: &str, issuer: &str) -> Result<Provider, OidcError> {
     let provider: Provider = serde_json::from_str(json).map_err(|_| OidcError::Discovery("not a discovery document"))?;
     if provider.issuer != issuer { return Err(OidcError::Discovery("the issuer does not match the configuration")); }
-    for endpoint in [&provider.authorization_endpoint, &provider.token_endpoint, &provider.userinfo_endpoint] {
+    for endpoint in [&provider.authorization_endpoint, &provider.token_endpoint, &provider.userinfo_endpoint].into_iter().chain(provider.jwks_uri.as_ref()) {
         if !secure_endpoint(endpoint) { return Err(OidcError::Discovery("every endpoint must be https")); }
     }
     Ok(provider)
@@ -122,6 +135,8 @@ pub enum State {
     AwaitingCallback { state: String, nonce: String, verifier: String, binding: String, started: u64 },
     /// Traded the code; waiting for the token endpoint.
     AwaitingTokens { nonce: String, started: u64 },
+    /// Got the tokens; waiting for the ID token's signature to be checked. `now` is when they came.
+    AwaitingSignature { nonce: String, id_token: String, access_token: String, now: u64 },
     /// Checked the ID token; waiting for the userinfo endpoint.
     AwaitingUserInfo { sub: String, token_email: Option<String>, token_verified: bool },
     SignedIn(Identity),
@@ -133,6 +148,8 @@ pub enum Event {
     /// The browser's callback query string, and the flow cookie it carried.
     Callback { query: String, binding: String, now: u64 },
     Tokens { status: u16, body: String, now: u64 },
+    /// The outcome of [`Effect::CheckSignature`].
+    Signature { valid: bool },
     UserInfo { status: u16, body: String },
 }
 
@@ -140,6 +157,8 @@ pub enum Event {
 pub enum Effect {
     /// POST `body` (form-encoded) to the token endpoint, with HTTP Basic client authentication when `basic` is set.
     PostToken { url: String, body: String, basic: Option<String> },
+    /// Check the ID token's signature against the provider's keys, then send [`Event::Signature`].
+    CheckSignature { id_token: String },
     /// GET the userinfo endpoint with this bearer token.
     GetUserInfo { url: String, access_token: String },
     SignIn(Identity),
@@ -198,7 +217,12 @@ impl State {
                 if status != 200 { return fail(OidcError::Token("the token endpoint refused the code")); }
                 let Ok(tokens) = serde_json::from_str::<TokenResponse>(&body) else { return fail(OidcError::Token("not a token response")) };
                 if !tokens.token_type.eq_ignore_ascii_case("bearer") { return fail(OidcError::Token("not a bearer token")); }
-                let claims = match id_token_claims(&tokens.id_token) { Ok(c) => c, Err(e) => return fail(e) };
+                let effect = Effect::CheckSignature { id_token: tokens.id_token.clone() };
+                (State::AwaitingSignature { nonce, id_token: tokens.id_token, access_token: tokens.access_token, now }, Some(effect))
+            }
+            (State::AwaitingSignature { nonce, id_token, access_token, now }, Event::Signature { valid }) => {
+                if !valid { return fail(BAD_SIGNATURE); }
+                let claims = match id_token_claims(&id_token) { Ok(c) => c, Err(e) => return fail(e) };
                 if claims.iss != provider.issuer { return fail(OidcError::Token("wrong issuer")); }
                 let audiences = claims.aud.list();
                 if !audiences.iter().any(|a| *a == client.client_id) { return fail(OidcError::Token("not issued to this relay")); }
@@ -206,7 +230,7 @@ impl State {
                 if claims.exp + LEEWAY <= now { return fail(OidcError::Token("expired")); }
                 if !same(claims.nonce.as_deref().unwrap_or_default().as_bytes(), nonce.as_bytes()) { return fail(OidcError::WrongNonce); }
                 if claims.sub.is_empty() { return fail(OidcError::Token("no subject")); }
-                let effect = Effect::GetUserInfo { url: provider.userinfo_endpoint.clone(), access_token: tokens.access_token };
+                let effect = Effect::GetUserInfo { url: provider.userinfo_endpoint.clone(), access_token };
                 (State::AwaitingUserInfo { sub: claims.sub, token_email: claims.email, token_verified: claims.email_verified.unwrap_or(false) }, Some(effect))
             }
             (State::AwaitingUserInfo { sub, token_email, token_verified }, Event::UserInfo { status, body }) => {

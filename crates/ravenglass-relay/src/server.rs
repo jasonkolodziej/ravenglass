@@ -44,6 +44,9 @@ pub struct OidcConfig {
     /// The issuer URL exactly as the provider's discovery document states it.
     pub issuer: String,
     pub client: crate::oidc::Client,
+    /// Check ID-token signatures against the provider's published keys. Off: trust the token
+    /// because it came straight from the token endpoint over TLS (OIDC Core 3.1.3.7).
+    pub verify_signatures: bool,
 }
 
 /// Users mode: many people, each with their own accounts.
@@ -153,6 +156,9 @@ pub async fn serve_users(listener: tokio::net::TcpListener, config: UsersConfig)
         return Err(std::io::Error::other("insecure dev cookies are only allowed on a loopback listener"));
     }
     if !config.password_login && config.oidc.is_none() { return Err(std::io::Error::other("users mode needs password sign-in or OIDC")); }
+    if config.oidc.as_ref().is_some_and(|o| !o.verify_signatures) {
+        eprintln!("warning: OIDC ID-token signatures are not checked (RAVENGLASS_RELAY_OIDC_VERIFY_SIGNATURES=false); trusting the TLS connection to the token endpoint");
+    }
     let (router, shared) = build_users(config);
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));

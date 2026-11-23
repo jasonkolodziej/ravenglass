@@ -91,6 +91,7 @@ fn oidc_config(oidc: &OidcSettings) -> server::OidcConfig {
             allowed_emails: oidc.allowed_emails.clone(),
             allowed_domains: oidc.allowed_domains.clone(),
         },
+        verify_signatures: oidc.verify_signatures,
     }
 }
 
