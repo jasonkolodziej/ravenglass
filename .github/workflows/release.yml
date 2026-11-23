@@ -253,7 +253,7 @@ jobs:
       - name: cargo-packager
         run: cargo install cargo-packager --version "$CARGO_PACKAGER_VERSION" --locked
       - name: Package (MSI)
-        run: cargo packager -p ravenglass --release --formats wix
+        run: cargo packager -p ravenglass --release --formats wix -vv
       - name: Sign the MSI
         if: steps.sign.outputs.signed == 'true'
         run: |

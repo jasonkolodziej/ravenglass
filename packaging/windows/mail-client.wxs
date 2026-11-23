@@ -4,10 +4,20 @@
      would overwrite HKLM\Software\Classes\mailto, and delete it again on uninstall.
      Linked into the MSI through wix.fragment-paths and wix.component-group-refs in app/Cargo.toml.
      [#Path] is the full path of the installed ravenglass.exe (File Id="Path" in the main template). -->
+<!-- The same Win64 switch as cargo-packager's main template: its components are 64-bit under the
+     64-bit Program Files folder, and WiX refuses a 32-bit component there (ICE80). The define in
+     the template does not reach this file, which candle compiles on its own. -->
+<?if $(sys.BUILDARCH)="x86"?>
+    <?define Win64 = "no" ?>
+<?elseif $(sys.BUILDARCH)="x64"?>
+    <?define Win64 = "yes" ?>
+<?else?>
+    <?error Unsupported value of sys.BUILDARCH=$(sys.BUILDARCH)?>
+<?endif?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <ComponentGroup Id="RavenglassMailClient">
-      <Component Id="RavenglassMailClientRegistration" Directory="INSTALLDIR" Guid="7C1C3B5E-2C1B-4C55-9C43-6B7C6E0B6A51">
+      <Component Id="RavenglassMailClientRegistration" Directory="INSTALLDIR" Guid="7C1C3B5E-2C1B-4C55-9C43-6B7C6E0B6A51" Win64="$(var.Win64)">
         <RegistryKey Root="HKLM" Key="Software\Classes\Ravenglass.mailto">
           <RegistryValue Type="string" Value="Ravenglass mailto link" KeyPath="yes"/>
           <RegistryValue Type="string" Name="URL Protocol" Value=""/>
