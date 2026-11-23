@@ -144,6 +144,11 @@ fn new_folders_go_beside_the_existing_ones() {
     assert_eq!(folders::name_for_new(&[plain("INBOX", "/"), plain("Sent", "/")], "Drafts"), "Drafts");
     assert_eq!(folders::name_for_new(&[plain("INBOX", ".")], "Drafts"), "Drafts", "an account with only an inbox says nothing about a namespace");
     assert_eq!(folders::name_for_new(&[], "Sent"), "Sent");
+    // Dovecot with an `INBOX.` namespace refuses top-level names; the retry goes under INBOX.
+    assert_eq!(folders::under_inbox(&[plain("INBOX", ".")], "Drafts").as_deref(), Some("INBOX.Drafts"));
+    assert_eq!(folders::under_inbox(&[plain("INBOX", "/"), plain("Sent", "/")], "Drafts").as_deref(), Some("INBOX/Drafts"));
+    assert_eq!(folders::under_inbox(&[Listed { mailbox: "INBOX".into(), delimiter: None, special_use: None }], "Drafts"), None);
+    assert_eq!(folders::under_inbox(&[], "Drafts"), None);
 }
 
 // ── envelopes ────────────────────────────────────────────────────────────────────────────────

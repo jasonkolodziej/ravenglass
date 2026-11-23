@@ -309,9 +309,19 @@ async fn role_mailbox(inner: &Inner, conn: &mut Conn, role: FolderRole, usual_na
     if let Some((listed, _)) = known.iter().find(|(_, r)| *r == role) { return Ok(listed.mailbox.clone()); }
     let listed: Vec<Listed> = known.into_iter().map(|(listed, _)| listed).collect();
     let name = folders::name_for_new(&listed, usual_name);
-    conn.run(&format!("CREATE {}", quote(&name)?), |_| {}).await?;
     *inner.folders.lock().unwrap() = None;
-    Ok(name)
+    match conn.run(&format!("CREATE {}", quote(&name)?), |_| {}).await {
+        Ok(()) => Ok(name),
+        // An `INBOX.` namespace refuses top-level names ("nonexistent namespace"): try under INBOX.
+        Err(refused) if refused.reusable => match folders::under_inbox(&listed, usual_name).filter(|nested| *nested != name) {
+            Some(nested) => {
+                conn.run(&format!("CREATE {}", quote(&nested)?), |_| {}).await?;
+                Ok(nested)
+            }
+            None => Err(refused),
+        },
+        Err(broken) => Err(broken),
+    }
 }
 
 async fn append(inner: &Inner, conn: &mut Conn, mailbox: &str, flags: &str, raw: &[u8]) -> Outcome<()> {
