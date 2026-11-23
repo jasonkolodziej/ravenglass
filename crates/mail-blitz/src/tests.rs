@@ -53,8 +53,10 @@ fn tall_documents_come_in_tiles_that_join_without_gaps() {
     let tiles: Vec<Tile> = (0..v.tile_count()).map(|i| v.tile(i).unwrap()).collect();
     assert_eq!(tiles.iter().map(|t| t.height).sum::<u32>(), total);
     assert!(tiles.iter().all(|t| t.width == width && t.y == t.index * TILE_H));
-    // A later tile shows later rows, not the top again.
-    assert_ne!(tiles[0].rgba[..4096], tiles[1].rgba[..4096]);
+    // A later tile shows later rows, not the top again. Whole tiles are compared (as a bool, so a
+    // failure does not print megabytes): a single pixel row can be the same white margin in both.
+    assert!(tiles[0].rgba != tiles[1].rgba, "tile 1 repeats tile 0");
+    assert!(tiles.iter().all(|t| share(t, [0xff, 0, 0]) > 0.2 && share(t, [0, 0, 0xff]) > 0.2), "every tile shows the striped rows");
     let mut whole = HtmlView::new(&body, Images::default(), Options::default()).unwrap();
     assert_eq!(whole.tile(1).unwrap(), tiles[1], "tiles are independent of paint order");
 }
