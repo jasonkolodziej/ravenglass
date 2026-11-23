@@ -4,6 +4,7 @@
 //! Message content is hostile input. Nothing here fetches anything, and HTML leaves this crate
 //! only through [`sanitize`].
 
+pub mod compose;
 mod css;
 mod html_text;
 mod sanitize;
@@ -41,6 +42,9 @@ pub struct Parsed {
     pub to: Vec<Address>,
     pub cc: Vec<Address>,
     pub date: Option<Timestamp>,
+    /// `Message-ID` and `References`, without angle brackets, for threading replies.
+    pub message_id: Option<String>,
+    pub references: Vec<String>,
     /// The `text/plain` body, if the sender wrote one.
     pub text: Option<String>,
     /// The `text/html` body, unsanitized. Never show it; pass it through [`sanitize`].
@@ -56,7 +60,7 @@ pub fn parse(raw: &[u8]) -> Result<Parsed, RenderError> {
         list.map(|l| l.mailboxes().filter_map(|m| Some(Address { name: m.name().map(str::to_owned), email: m.address()?.to_owned() })).collect()).unwrap_or_default()
     };
     let join = |parts: Vec<String>| (!parts.is_empty()).then(|| parts.join("\n"));
-    let text = join(msg.text_body().filter(|p| matches!(p.kind(), PartKind::Text)).filter_map(|p| p.text().map(|t| t.into_owned())).collect());
+    let text = join(msg.text_body().filter(|p| matches!(p.kind(), PartKind::Text)).filter_map(|p| p.text().map(|t| t.replace("\r\n", "\n"))).collect());
     let html = join(msg.html_body().filter(|p| matches!(p.kind(), PartKind::Html)).filter_map(|p| p.text().map(|t| t.into_owned())).collect());
     let mime = |p: &mail_parser::MessagePart<'_>| {
         p.content_type().map_or_else(|| "application/octet-stream".to_owned(), |c| format!("{}/{}", c.ctype(), c.subtype().unwrap_or("octet-stream")).to_ascii_lowercase())
@@ -68,6 +72,8 @@ pub fn parse(raw: &[u8]) -> Result<Parsed, RenderError> {
         to: addresses(msg.to()),
         cc: addresses(msg.cc()),
         date: msg.date().map(|d| d.to_timestamp()),
+        message_id: msg.message_id().map(str::to_owned),
+        references: msg.references().map(|r| r.iter().map(str::to_owned).collect()).unwrap_or_default(),
         text,
         html,
         ..Default::default()

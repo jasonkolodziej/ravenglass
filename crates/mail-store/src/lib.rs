@@ -28,7 +28,7 @@ pub enum StoreError {
 pub type Result<T> = std::result::Result<T, StoreError>;
 
 /// Forward-only migrations, in order. `user_version` records how many have run.
-const MIGRATIONS: &[&str] = &[include_str!("migrations/0001_init.sql")];
+const MIGRATIONS: &[&str] = &[include_str!("migrations/0001_init.sql"), include_str!("migrations/0002_drafts.sql")];
 
 /// Default cap on cached raw bodies (desktop: 2 GB; the web build passes 300 MB).
 pub const DEFAULT_BODY_BYTES: u64 = 2 << 30;
@@ -220,6 +220,21 @@ impl Store {
 
     pub fn journal_remove(&mut self, seq: i64) -> Result<()> {
         self.conn.execute("DELETE FROM ops_journal WHERE seq = ?1", [seq])?;
+        Ok(())
+    }
+
+    pub fn put_draft(&mut self, id: &DraftId, json: &str) -> Result<()> {
+        self.conn.execute("INSERT OR REPLACE INTO drafts (id, draft) VALUES (?1, ?2)", params![id.0, json])?;
+        Ok(())
+    }
+
+    pub fn drafts(&self) -> Result<Vec<String>> {
+        let mut q = self.conn.prepare_cached("SELECT draft FROM drafts ORDER BY rowid")?;
+        Ok(q.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn delete_draft(&mut self, id: &DraftId) -> Result<()> {
+        self.conn.execute("DELETE FROM drafts WHERE id = ?1", [&id.0])?;
         Ok(())
     }
 

@@ -20,6 +20,7 @@ id!(AccountId);
 id!(FolderId);
 id!(MessageId);
 id!(ThreadId);
+id!(DraftId);
 
 /// Seconds since the Unix epoch, UTC. Kept as an integer so mock data is deterministic.
 pub type Timestamp = i64;
@@ -78,6 +79,42 @@ impl Envelope {
 /// A fetched message: raw RFC 5322 bytes; `mail-render` parses them.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawMessage { pub id: MessageId, pub bytes: Vec<u8> }
+
+/// A file attached to a draft, held in memory until the draft is sent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftAttachment { pub name: String, pub mime: String, pub bytes: Vec<u8> }
+
+/// A message being written. The body is plain text; rich text is a later addition.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Draft {
+    pub id: DraftId,
+    pub account: AccountId,
+    pub from: Address,
+    pub to: Vec<Address>,
+    pub cc: Vec<Address>,
+    pub bcc: Vec<Address>,
+    pub subject: String,
+    pub body: String,
+    /// `Message-ID` of the message this answers, without angle brackets.
+    pub in_reply_to: Option<String>,
+    pub references: Vec<String>,
+    pub attachments: Vec<DraftAttachment>,
+}
+
+impl Draft {
+    pub fn new(id: DraftId, account: AccountId, from: Address) -> Self {
+        Self { id, account, from, to: vec![], cc: vec![], bcc: vec![], subject: String::new(), body: String::new(), in_reply_to: None, references: vec![], attachments: vec![] }
+    }
+
+    /// Everyone the message is delivered to, each address once.
+    pub fn recipients(&self) -> Vec<Address> {
+        let mut all: Vec<Address> = Vec::new();
+        for a in self.to.iter().chain(&self.cc).chain(&self.bcc) {
+            if !all.iter().any(|b| b.email.eq_ignore_ascii_case(&a.email)) { all.push(a.clone()); }
+        }
+        all
+    }
+}
 
 /// Opaque resume point for incremental sync (IMAP: UIDVALIDITY + HIGHESTMODSEQ; mock: a counter).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

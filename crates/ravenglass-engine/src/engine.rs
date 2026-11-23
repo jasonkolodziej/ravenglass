@@ -26,8 +26,10 @@ impl Default for Config {
     fn default() -> Self { Self { undo_send_secs: 10.0 } }
 }
 
-struct Account {
-    backend: Arc<dyn MailBackend>,
+pub(crate) struct Account {
+    pub(crate) backend: Arc<dyn MailBackend>,
+    /// The account's own address: the sender of its drafts.
+    pub(crate) identity: Address,
     sync: account_sync::State,
     /// Folders still to sync in this pass, Inbox first.
     queue: VecDeque<FolderId>,
@@ -41,26 +43,33 @@ struct Done { op: Op, pending: bool }
 
 pub struct Engine {
     pub(crate) html: crate::html::Html,
-    store: Store,
+    pub(crate) drafts: crate::drafts::Drafts,
+    pub(crate) store: Store,
     config: Config,
-    accounts: BTreeMap<AccountId, Account>,
+    pub(crate) accounts: BTreeMap<AccountId, Account>,
     outbox: BTreeMap<OutboxId, Outgoing>,
     next_outbox: u64,
     history: BTreeMap<OpId, Done>,
 }
 
-type Events = Vec<Event>;
+pub(crate) type Events = Vec<Event>;
 /// A command step; the error text becomes an [`Event::Error`].
-type Outcome<T = ()> = std::result::Result<T, String>;
+pub(crate) type Outcome<T = ()> = std::result::Result<T, String>;
 
 impl Engine {
     pub fn new(store: Store, config: Config) -> Self {
-        Self { html: crate::html::Html::default(), store, config, accounts: BTreeMap::new(), outbox: BTreeMap::new(), next_outbox: 1, history: BTreeMap::new() }
+        Self { html: crate::html::Html::default(), drafts: crate::drafts::Drafts::default(), store, config, accounts: BTreeMap::new(), outbox: BTreeMap::new(), next_outbox: 1, history: BTreeMap::new() }
     }
 
     pub fn add_backend(&mut self, backend: Arc<dyn MailBackend>) {
-        let account = Account { backend: backend.clone(), sync: account_sync::State::Disconnected, queue: VecDeque::new(), total: 0 };
+        let identity = Address { name: None, email: backend.account().0.clone() };
+        let account = Account { backend: backend.clone(), identity, sync: account_sync::State::Disconnected, queue: VecDeque::new(), total: 0 };
         self.accounts.insert(backend.account().clone(), account);
+    }
+
+    /// The name and address an account sends as. Defaults to the account id as the address.
+    pub fn set_identity(&mut self, account: &AccountId, identity: Address) {
+        if let Some(a) = self.accounts.get_mut(account) { a.identity = identity; }
     }
 
     /// Give the engine a render thread. Without one, `RenderHtml` answers `HtmlFailed` and the
@@ -68,6 +77,9 @@ impl Engine {
     pub fn set_renderer(&mut self, renderer: mail_blitz::Renderer) { self.html.renderer = Some(renderer); }
 
     pub fn store(&self) -> &Store { &self.store }
+
+    /// Stop the engine and keep its store.
+    pub fn into_store(self) -> Store { self.store }
 
     /// Run one command to completion. Errors become [`Event::Error`]; the engine keeps going.
     pub async fn handle(&mut self, cmd: Command, now: f64) -> Events {
@@ -114,16 +126,12 @@ impl Engine {
                 out.push(Event::SearchResults { query, envelopes });
                 Ok(())
             }
-            Command::Send { account, raw, from, rcpt } => {
-                if !self.accounts.contains_key(&account) { return Err("unknown account".into()); }
-                let id = OutboxId(self.next_outbox);
-                self.next_outbox += 1;
-                let (state, effects) = outbox::queue(now, self.config.undo_send_secs.clamp(0.0, 30.0));
-                self.outbox.insert(id, Outgoing { account, raw, from, rcpt, state: state.clone() });
-                out.push(Event::OutboxState { id, state });
-                self.outbox_effects(id, effects, out).await;
-                Ok(())
-            }
+            Command::Send { account, raw, from, rcpt } => self.queue_send(account, raw, from, rcpt, now, out).await.map(|_| ()),
+            Command::StartDraft { id, account, source } => self.start_draft(id, account, source, out).await,
+            Command::EditDraft(draft) => self.edit_draft(*draft, now, out),
+            Command::SendDraft(id) => self.send_draft(id, now, out).await,
+            Command::DiscardDraft(id) => self.discard_draft(id, out),
+            Command::LoadDrafts => self.load_drafts(out),
             Command::CancelSend(id) => self.outbox_event(id, outbox::Event::Undo, out).await,
             Command::RetrySend(id) => self.outbox_event(id, outbox::Event::Retry, out).await,
             Command::AllowImages { message, scope } => {
@@ -156,6 +164,7 @@ impl Engine {
                 for account in accounts { self.sync_event(&account, account_sync::Event::Timer(now), now, out).await?; }
                 let queued: Vec<OutboxId> = self.outbox.keys().copied().collect();
                 for id in queued { self.outbox_event(id, outbox::Event::Timer(now), out).await?; }
+                self.draft_timers(now, out).await;
                 Ok(())
             }
         }
@@ -316,7 +325,7 @@ impl Engine {
     // ── reader ─────────────────────────────────────────────────────────────────────────────
 
     /// A message's raw bytes: from the cache, else from the server.
-    async fn raw(&mut self, id: &MessageId) -> Outcome<RawMessage> {
+    pub(crate) async fn raw(&mut self, id: &MessageId) -> Outcome<RawMessage> {
         if let Some(raw) = self.store.body(id).map_err(text)? { return Ok(raw); }
         let account = self.store.account_of(id).map_err(text)?.ok_or("unknown message")?;
         let backend = self.accounts.get(&account).ok_or("unknown account")?.backend.clone();
@@ -341,6 +350,17 @@ impl Engine {
     }
 
     // ── outbox ─────────────────────────────────────────────────────────────────────────────
+
+    pub(crate) async fn queue_send(&mut self, account: AccountId, raw: Vec<u8>, from: Address, rcpt: Vec<Address>, now: f64, out: &mut Events) -> Outcome<OutboxId> {
+        if !self.accounts.contains_key(&account) { return Err("unknown account".into()); }
+        let id = OutboxId(self.next_outbox);
+        self.next_outbox += 1;
+        let (state, effects) = outbox::queue(now, self.config.undo_send_secs.clamp(0.0, 30.0));
+        self.outbox.insert(id, Outgoing { account, raw, from, rcpt, state: state.clone() });
+        out.push(Event::OutboxState { id, state });
+        self.outbox_effects(id, effects, out).await;
+        Ok(id)
+    }
 
     async fn outbox_event(&mut self, id: OutboxId, first: outbox::Event, out: &mut Events) -> Outcome {
         let item = self.outbox.get_mut(&id).ok_or("no such outgoing message")?;
@@ -374,7 +394,7 @@ impl Engine {
     }
 }
 
-fn text(e: impl std::fmt::Display) -> String { e.to_string() }
+pub(crate) fn text(e: impl std::fmt::Display) -> String { e.to_string() }
 
 fn store_error(e: mail_store::StoreError) -> MailError { MailError::Server(format!("local store: {e}")) }
 
@@ -384,6 +404,7 @@ fn command_name(cmd: &Command) -> &'static str {
         Command::OpenMessage { .. } => "open message", Command::SetFlags { .. } => "set flags", Command::Move { .. } | Command::MoveToRole { .. } => "move",
         Command::Undo(_) => "undo", Command::Search { .. } => "search", Command::Send { .. } => "send", Command::CancelSend(_) => "cancel send",
         Command::RetrySend(_) => "retry send", Command::AllowImages { .. } => "allow images", Command::CompleteAddress { .. } => "complete address", Command::Tick => "timers",
+        Command::StartDraft { .. } | Command::EditDraft(_) | Command::LoadDrafts => "draft", Command::SendDraft(_) => "send draft", Command::DiscardDraft(_) => "discard draft",
         Command::RenderHtml { .. } | Command::ResizeHtml { .. } | Command::HtmlTile { .. } | Command::HtmlPointer { .. } | Command::CloseHtml(_) => "render HTML",
     }
 }

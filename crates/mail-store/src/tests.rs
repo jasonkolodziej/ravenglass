@@ -122,6 +122,12 @@ fn journal_contacts_and_image_policy() {
     let b = store.journal_push("{\"op\":2}").unwrap();
     store.journal_remove(a).unwrap();
     assert_eq!(store.journal_pending().unwrap(), vec![(b, "{\"op\":2}".to_owned())]);
+    let d = DraftId::from("d1");
+    store.put_draft(&d, "{\"v\":1}").unwrap();
+    store.put_draft(&d, "{\"v\":2}").unwrap();
+    assert_eq!(store.drafts().unwrap(), ["{\"v\":2}"]);
+    store.delete_draft(&d).unwrap();
+    assert!(store.drafts().unwrap().is_empty());
     let odin = store.complete_address("odi", 5).unwrap();
     assert_eq!(odin.first().map(|a| a.email.as_str()), Some("odin@asgard.example"));
     assert!(!store.images_allowed_from("News@Dioxus.example").unwrap());

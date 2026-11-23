@@ -8,11 +8,12 @@
 //! HTML mail is laid out and painted by `mail-blitz` on its render thread; the engine holds the
 //! [`Renderer`] handle and one `HtmlView` state machine per reader pane.
 //!
-//! Not here yet: draft saving (`ComposeSession`), fetching remote images the user allowed (until
+//! Not here yet: rich-text drafts and deleting a sent draft's server copy, fetching remote images the user allowed (until
 //! then they stay placeholders), server search for mail outside the cache, and the IDLE
 //! subscription that turns pushes into [`Command::Refresh`].
 
 pub mod api;
+mod drafts;
 mod engine;
 mod html;
 mod ops;
@@ -21,6 +22,7 @@ pub mod runner;
 #[cfg(test)]
 mod tests;
 
-pub use api::{BodyView, Command, Event, OpId, OutboxId, ReaderView, ViewId};
+pub use api::{BodyView, Command, DraftSource, Event, OpId, OutboxId, ReaderView, ViewId};
+pub use mail_render::compose::ReplyKind;
 pub use mail_blitz::{DarkMode, Failure as HtmlFailure, Info as HtmlInfo, Link, Options as HtmlOptions, Renderer, Tile};
 pub use engine::{Config, Engine, PAGE};

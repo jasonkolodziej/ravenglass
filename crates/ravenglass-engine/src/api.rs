@@ -20,6 +20,10 @@ pub struct OutboxId(pub u64);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ViewId(pub u64);
 
+/// What a new draft starts from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DraftSource { Blank, Answer { message: MessageId, kind: mail_render::compose::ReplyKind } }
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReaderView { Html, Text }
 
@@ -40,6 +44,15 @@ pub enum Command {
     Send { account: AccountId, raw: Vec<u8>, from: Address, rcpt: Vec<Address> },
     CancelSend(OutboxId),
     RetrySend(OutboxId),
+    /// Open a compose session. Answered by [`Event::Draft`] with the addressed, quoted draft.
+    StartDraft { id: DraftId, account: AccountId, source: DraftSource },
+    /// The whole draft after an edit. Saved locally at once and to the server after a quiet period.
+    EditDraft(Box<Draft>),
+    /// Send a draft through the outbox (with its undo window) and close the session.
+    SendDraft(DraftId),
+    DiscardDraft(DraftId),
+    /// Drafts kept from an earlier run, each answered by [`Event::Draft`].
+    LoadDrafts,
     AllowImages { message: MessageId, scope: image_load::Scope },
     CompleteAddress { prefix: String, limit: u32 },
     /// Lay out a message's HTML for a reader pane. Answered by [`Event::HtmlLaidOut`] or
@@ -68,6 +81,11 @@ pub enum Event {
     Undone { op: OpId },
     SearchResults { query: String, envelopes: Vec<Envelope> },
     OutboxState { id: OutboxId, state: outbox::State },
+    Draft(Box<Draft>),
+    /// The draft is safe: locally (`on_server` false) or also in the account's Drafts folder.
+    DraftSaved { id: DraftId, on_server: bool },
+    /// The session ended: sent (`outbox` names the queued message) or discarded.
+    DraftClosed { id: DraftId, outbox: Option<OutboxId> },
     Body { id: MessageId, body: Box<BodyView> },
     ImagesAllowed { message: MessageId },
     Addresses { prefix: String, addresses: Vec<Address> },

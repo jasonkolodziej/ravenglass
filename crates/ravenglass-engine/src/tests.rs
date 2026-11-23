@@ -311,3 +311,52 @@ fn html_mail_is_laid_out_tiled_hit_tested_and_resized_through_the_engine() {
     run(&mut engine, Command::CloseHtml(view));
     assert!(run(&mut engine, Command::HtmlTile { view, index: 0 }).is_empty());
 }
+
+#[test]
+fn a_reply_is_drafted_autosaved_sent_through_the_outbox_and_closed() {
+    use mail_core::machine::compose::AUTOSAVE_SECS;
+    let mut rig = Rig::synced();
+    rig.engine.set_identity(&rig.account.clone(), Address::new("Jason", "jason@example.com"));
+    let original = rig.page().remove(0);
+    let id = DraftId::from("d1");
+    let source = DraftSource::Answer { message: original.id.clone(), kind: ReplyKind::Reply };
+    let Some(Event::Draft(mut draft)) = rig.run(Command::StartDraft { id: id.clone(), account: rig.account.clone(), source }).pop() else { panic!("no draft") };
+    assert_eq!((draft.to.as_slice(), draft.from.email.as_str()), (std::slice::from_ref(&original.from), "jason@example.com"));
+    assert!(draft.subject.starts_with("Re: ") && draft.body.contains("> "), "{draft:?}");
+
+    draft.body.insert_str(0, "Thanks, on it.");
+    let edited = rig.run(Command::EditDraft(draft.clone()));
+    assert!(edited.contains(&Event::DraftSaved { id: id.clone(), on_server: false }) && edited.contains(&Event::WakeAt(rig.now + AUTOSAVE_SECS)));
+    assert_eq!(rig.engine.store().drafts().unwrap().len(), 1, "saved locally at once");
+    assert!(rig.run(Command::Tick).is_empty(), "the server copy waits for a quiet period");
+    rig.now += AUTOSAVE_SECS;
+    assert!(rig.run(Command::Tick).contains(&Event::DraftSaved { id: id.clone(), on_server: true }));
+
+    let sent = rig.run(Command::SendDraft(id.clone()));
+    let Some(Event::DraftClosed { outbox: Some(outbox), .. }) = sent.last() else { panic!("{sent:?}") };
+    assert!(rig.engine.store().drafts().unwrap().is_empty());
+    rig.now += 10.0;
+    assert!(rig.run(Command::Tick).contains(&Event::OutboxState { id: *outbox, state: outbox::State::Sent }));
+    let raw = rig.backend.inner.sent.lock().unwrap().pop().unwrap();
+    let wire = mail_render::parse(&raw).unwrap();
+    assert_eq!((wire.to.as_slice(), wire.text.unwrap().starts_with("Thanks, on it.")), (std::slice::from_ref(&original.from), true));
+    assert!(matches!(rig.run(Command::SendDraft(id)).as_slice(), [Event::Error { .. }]), "a draft sends once");
+}
+
+#[test]
+fn drafts_need_a_recipient_survive_a_restart_and_can_be_discarded() {
+    let mut rig = Rig::synced();
+    let id = DraftId::from("d2");
+    let Some(Event::Draft(mut draft)) = rig.run(Command::StartDraft { id: id.clone(), account: rig.account.clone(), source: DraftSource::Blank }).pop() else { panic!() };
+    draft.subject = "Unfinished".into();
+    rig.run(Command::EditDraft(draft.clone()));
+    assert!(matches!(rig.run(Command::SendDraft(id.clone())).as_slice(), [Event::Error { .. }]), "no recipient");
+    // A new engine over the same store finds the draft again.
+    let Rig { engine, backend, .. } = rig;
+    let mut restarted = Engine::new(engine.into_store(), Config::default());
+    restarted.add_backend(backend);
+    let loaded = block_on(restarted.handle(Command::LoadDrafts, 0.0));
+    assert_eq!(loaded, [Event::Draft(draft)]);
+    assert_eq!(block_on(restarted.handle(Command::DiscardDraft(id.clone()), 0.0)), [Event::DraftClosed { id, outbox: None }]);
+    assert!(block_on(restarted.handle(Command::LoadDrafts, 0.0)).is_empty());
+}

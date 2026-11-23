@@ -131,3 +131,63 @@ fn hostile_and_broken_input_never_panics() {
         if let Ok(p) = parse(raw) { p.body(&id(), Prefer::Html); }
     }
 }
+
+mod compose_tests {
+    use super::*;
+    use crate::compose::*;
+    use mail_core::{AccountId, Address, Draft, DraftAttachment, DraftId};
+
+    fn me() -> Address { Address::new("Jason", "jason@example.com") }
+
+    #[test]
+    fn a_built_draft_parses_back_to_the_same_message_without_naming_bcc() {
+        let mut d = Draft::new(DraftId::from("d1"), AccountId::from("a"), me());
+        d.to = vec![Address::new("Odin Allfather", "odin@asgard.example"), Address { name: None, email: "huginn@ravens.example".into() }];
+        d.cc = vec![Address::new("Muninn", "muninn@ravens.example")];
+        d.bcc = vec![Address::new("Secret", "hidden@example.com")];
+        d.subject = "Größe — test ✓".into();
+        d.body = "Line one\nhttps://example.com/x\n".into();
+        d.in_reply_to = Some("parent@asgard.example".into());
+        d.references = vec!["root@asgard.example".into(), "parent@asgard.example".into()];
+        d.attachments = vec![DraftAttachment { name: "route.pdf".into(), mime: "application/pdf".into(), bytes: vec![1, 2, 3, 255] }];
+        let id = message_id(&d.from, 1_794_588_240.5, 7);
+        assert!(id.ends_with(".7.ravenglass@example.com"), "{id}");
+        let raw = build(&d, &id, 1_794_588_240);
+        assert!(!String::from_utf8_lossy(&raw).to_ascii_lowercase().contains("hidden@example.com"));
+        let p = parse(&raw).unwrap();
+        assert_eq!((p.subject.as_str(), p.from.as_ref(), &p.to, &p.cc), (d.subject.as_str(), Some(&d.from), &d.to, &d.cc));
+        assert_eq!((p.date, p.message_id.as_deref(), &p.references), (Some(1_794_588_240), Some(id.as_str()), &d.references));
+        assert_eq!(p.text.as_deref().map(str::trim_end), Some(d.body.trim_end()));
+        assert_eq!(p.attachments.iter().map(|a| (a.name.as_str(), a.mime.as_str(), a.size)).collect::<Vec<_>>(), [("route.pdf", "application/pdf", 4)]);
+        assert_eq!(d.recipients().len(), 4);
+    }
+
+    #[test]
+    fn replies_address_quote_and_thread_correctly() {
+        let original = parse(include_bytes!("../../../fixtures/emails/01-plain-reply.eml")).unwrap();
+        let sender = original.from.clone().unwrap();
+        let mine = original.to.first().cloned().unwrap_or_else(me);
+        let r = reply(&original, ReplyKind::Reply, DraftId::from("d"), AccountId::from("a"), &mine);
+        assert_eq!(r.to, std::slice::from_ref(&sender));
+        assert!(r.subject.to_ascii_lowercase().starts_with("re: ") && !r.subject.to_ascii_lowercase().starts_with("re: re:"));
+        assert_eq!(r.in_reply_to, original.message_id);
+        assert_eq!(r.references.last(), original.message_id.as_ref());
+        let quoted: Vec<&str> = r.body.lines().filter(|l| l.starts_with('>')).collect();
+        assert!(!quoted.is_empty() && r.body.contains(&format!("{} wrote:", sender.display())), "{}", r.body);
+        assert!(quoted.iter().any(|l| l.starts_with(">>")), "already-quoted lines go one level deeper");
+
+        let all = reply(&original, ReplyKind::ReplyAll, DraftId::from("d"), AccountId::from("a"), &mine);
+        assert!(all.to.contains(&sender) && all.to.iter().chain(&all.cc).all(|a| a.email != mine.email));
+
+        let f = reply(&original, ReplyKind::Forward, DraftId::from("d"), AccountId::from("a"), &mine);
+        assert!(f.to.is_empty() && f.in_reply_to.is_none() && f.subject.starts_with("Fwd: "));
+        assert!(f.body.contains("Forwarded message") && f.body.contains(&original.subject));
+    }
+
+    #[test]
+    fn html_only_mail_is_quoted_as_text() {
+        let original = parse(include_bytes!("../../../fixtures/emails/02-newsletter-tables.eml")).unwrap();
+        let r = reply(&original, ReplyKind::Reply, DraftId::from("d"), AccountId::from("a"), &me());
+        assert!(r.body.contains("> Blitz 0.3 is out") && !r.body.contains('<'), "{}", r.body);
+    }
+}

@@ -9,6 +9,7 @@ description = "Ravenglass MIME to body model: parse, choose a part, sanitize HTM
 [dependencies]
 mail-core = { path = "../mail-core" }
 mail-parser.workspace = true
+mail-builder.workspace = true
 ammonia.workspace = true
 thiserror.workspace = true
 serde.workspace = true
