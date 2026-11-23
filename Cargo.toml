@@ -83,6 +83,11 @@ hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 tokio-tungstenite = "0.29"
+# ravenglass-relay: OIDC ID-token signature verification (pure Rust; verification only, no RSA decryption).
+rsa = { version = "0.10", default-features = false, features = ["pkcs1v15"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa"] }
+p384 = { version = "0.14", default-features = false, features = ["ecdsa"] }
+ed25519-dalek = { version = "3", default-features = false, features = ["fast"] }
 futures-util = { version = "0.3", default-features = false }
 # ravenglass-check: the password prompt without echo.
 rpassword = "7"

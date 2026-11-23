@@ -6,6 +6,7 @@ fn provider() -> Provider {
         authorization_endpoint: "https://idp.example/authorize".into(),
         token_endpoint: "https://idp.example/token".into(),
         userinfo_endpoint: "https://idp.example/userinfo".into(),
+        jwks_uri: Some("https://idp.example/jwks".into()),
     }
 }
 
@@ -33,12 +34,26 @@ fn tokens(nonce: &str, overrides: serde_json::Value) -> String {
     serde_json::json!({ "access_token": "at", "token_type": "Bearer", "id_token": jwt(claims) }).to_string()
 }
 
-fn through_tokens(overrides: serde_json::Value) -> (State, Option<Effect>) {
+fn through_tokens(overrides: serde_json::Value) -> (State, Option<Effect>) { through_signature(overrides, true) }
+
+fn through_signature(overrides: serde_json::Value, valid: bool) -> (State, Option<Effect>) {
     let (state, s, nonce, binding) = started();
     let (state, effect) = state.step(&provider(), &client(), Event::Callback { query: format!("code=abc&state={s}"), binding, now: 1001 });
     let Some(Effect::PostToken { body, .. }) = effect else { panic!("{effect:?}") };
     assert!(body.contains("grant_type=authorization_code") && body.contains("code=abc") && body.contains("code_verifier=") && body.contains("client_id=relay"));
-    state.step(&provider(), &client(), Event::Tokens { status: 200, body: tokens(&nonce, overrides), now: 1002 })
+    let (state, effect) = state.step(&provider(), &client(), Event::Tokens { status: 200, body: tokens(&nonce, overrides), now: 1002 });
+    let Some(Effect::CheckSignature { id_token }) = effect else { panic!("{effect:?}") };
+    assert_eq!(id_token.split('.').count(), 3);
+    assert!(matches!(&state, State::AwaitingSignature { now: 1002, .. }));
+    state.step(&provider(), &client(), Event::Signature { valid })
+}
+
+#[test]
+fn claims_are_read_only_after_the_signature_verifies() {
+    assert_eq!(through_signature(serde_json::json!({}), false).1, Some(Effect::Fail(BAD_SIGNATURE)));
+    assert_eq!(through_signature(serde_json::json!({ "iss": "https://evil.example", "exp": 1 }), false).1, Some(Effect::Fail(BAD_SIGNATURE)), "a bad signature hides every claim check");
+    let (state, _) = through_tokens(serde_json::json!({}));
+    assert_eq!(state.step(&provider(), &client(), Event::Signature { valid: true }).1, Some(Effect::Fail(OidcError::WrongState)), "one answer per check");
 }
 
 #[test]
@@ -109,6 +124,11 @@ fn discovery_must_name_the_configured_issuer() {
     assert_eq!(parse_discovery(doc, "https://idp.example").unwrap().token_endpoint, "https://idp.example/t");
     assert!(parse_discovery(doc, "https://other.example").is_err());
     assert!(parse_discovery("{}", "https://idp.example").is_err());
+    assert_eq!(parse_discovery(doc, "https://idp.example").unwrap().jwks_uri, None);
+    let with_keys = doc.replace(r#""userinfo_endpoint""#, r#""jwks_uri":"https://idp.example/k","userinfo_endpoint""#);
+    assert_eq!(parse_discovery(&with_keys, "https://idp.example").unwrap().jwks_uri.as_deref(), Some("https://idp.example/k"));
+    let plain_keys = with_keys.replace("https://idp.example/k", "http://idp.example/k");
+    assert_eq!(parse_discovery(&plain_keys, "https://idp.example"), Err(OidcError::Discovery("every endpoint must be https")));
     let plain = doc.replace("https://idp.example/t", "http://idp.example/t");
     assert_eq!(parse_discovery(&plain, "https://idp.example"), Err(OidcError::Discovery("every endpoint must be https")));
     assert!(secure_endpoint("http://127.0.0.1:9/token") && secure_endpoint("http://localhost/x") && !secure_endpoint("ftp://idp.example/"));

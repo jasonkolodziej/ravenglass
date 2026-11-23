@@ -96,6 +96,7 @@ prefix (`[oidc] issuer = "…"`), and the two allowlists are TOML arrays. Unknow
 | `RAVENGLASS_RELAY_OIDC_SCOPES` | `openid email profile` | Scopes requested. |
 | `RAVENGLASS_RELAY_OIDC_ALLOWED_EMAILS` | none | Comma-separated email addresses allowed to sign in (case-insensitive). |
 | `RAVENGLASS_RELAY_OIDC_ALLOWED_DOMAINS` | none | Comma-separated email domains allowed to sign in. With both lists empty, anyone the provider authenticates may sign in. |
+| `RAVENGLASS_RELAY_OIDC_VERIFY_SIGNATURES` | `true` | Check each ID token's signature against the provider's published keys (`jwks_uri`). Turn off only for a provider that publishes no keys: the Relay then trusts the token because it came straight from the token endpoint over TLS, and warns at start-up. TOML: `[oidc] verify_signatures`. |
 | `RAVENGLASS_GOOGLE_CLIENT_ID` | none | Users mode: OAuth client id for Gmail accounts (same variable as the desktop app). |
 | `RAVENGLASS_MICROSOFT_CLIENT_ID` | none | Users mode: OAuth client id for Microsoft 365 accounts. |
 
@@ -155,9 +156,26 @@ How the Relay uses it:
 - Authorization code with PKCE (S256), a random `state` and `nonce`, and a flow cookie that binds the
   callback to the browser that started it (no login CSRF). A flow lasts at most 10 minutes and its
   callback works once.
-- The ID token comes straight from the token endpoint over a TLS connection the Relay made to the
-  configured issuer, so, as OIDC Core 3.1.3.7 allows, that TLS connection stands in for checking the
-  token's signature (no JWKS fetch, no RSA). Its `iss`, `aud`, `azp`, `exp` and `nonce` are checked.
+- The ID token's signature is checked before any of its claims are read, then its `iss`, `aud`,
+  `azp`, `exp` and `nonce` are checked:
+  - The keys come only from the discovery document's `jwks_uri` (which must be `https`, like the
+    other endpoints). Header fields that name or carry a key (`jku`, `x5u`, `jwk`, `x5c`) are ignored,
+    and a token with a `crit` header is refused.
+  - Algorithms: `RS256`, `RS384`, `RS512`, `PS256`, `ES256`, `ES384` and `EdDSA` (Ed25519). Never
+    `none`, never an HMAC algorithm, and the `alg` must fit the key's type and curve (and the key's own
+    `alg`, if it states one). RSA keys must be 2048 to 8192 bits.
+  - The key is picked by `kid`; a token without a `kid` needs exactly one key that fits its `alg`.
+  - The key set is kept in memory for its `Cache-Control: max-age`, held between 5 minutes and
+    24 hours (1 hour without one). A token naming a `kid` the set lacks makes the Relay fetch the set
+    once more (providers rotate keys), but never more than once a minute, so a stream of bad tokens
+    cannot make it hammer the provider. If a refresh fails, the old set is used until the next try.
+  - Verification is pure Rust (RustCrypto `rsa`, `p256`, `p384`, `ed25519-dalek`) and only ever
+    verifies: there is no RSA decryption or signing in the Relay.
+  - Any signature failure gives the same error page ("its signature does not verify").
+
+  With `RAVENGLASS_RELAY_OIDC_VERIFY_SIGNATURES=false`, no keys are fetched and, as OIDC Core
+  3.1.3.7 allows, the TLS connection the Relay made to the token endpoint stands in for the
+  signature.
 - The user is then read from the userinfo endpoint; its `sub` must equal the ID token's.
 - With an allowlist set, the email must be present **and `email_verified` must be true**. Some
   providers (notably Entra ID) do not send `email_verified`; with them, use no allowlist and restrict
