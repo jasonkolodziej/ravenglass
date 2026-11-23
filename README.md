@@ -4,9 +4,9 @@ An all-Rust, cross-platform (macOS · Windows · Linux) mail client with a chara
 the [Rune](https://github.com/anomalyco/rune) GPU UI framework. HTML email is rendered with
 [Blitz](https://github.com/DioxusLabs/blitz).
 
-> **Status:** M0 done; the engine side of the architecture is under way. The app opens and draws the wallpaper; the store,
-> search, MIME parsing, HTML sanitizing, the engine and the Relay protocol have tests; the grid UI, IMAP/JMAP, Blitz
-> rendering and the web build are not started. Start with **[START_HERE.md](START_HERE.md)**.
+> **Status:** the engine side is largely built and tested; the app's grid UI is being connected to it. Nothing has
+> been built on macOS or Windows yet, no real mail provider has been used (IMAP is tested against GreenMail, JMAP only
+> against an in-process server), and the web build only type-checks. Start with **[START_HERE.md](START_HERE.md)**.
 
 | Where | What |
 |---|---|
@@ -27,21 +27,26 @@ the [Rune](https://github.com/anomalyco/rune) GPU UI framework. HTML email is re
 
 | Crate | Layer | State |
 |---|---|---|
-| `mail-core` | Core | Types, `MailBackend`, and the `AccountSync`, `Outbox`, `ComposeSession`, `ImageLoad` and `HtmlView` state machines |
-| `ravenglass-theme`, `ravenglass-brand` | Core | Themes, roles, contrast fixer, Ghostty import; raven geometry and dot field |
+| `mail-core` | Core | Types, `MailBackend`, a small executor, and the `AccountSync`, `Outbox`, `ComposeSession`, `ImageLoad`, `HtmlView` and `AppLock` state machines |
+| `ravenglass-theme`, `ravenglass-brand` | Core | Themes, roles, contrast fixer; importers for Ghostty, Kitty, Alacritty, Windows Terminal and iTerm2; raven geometry and dot field |
+| `ravenglass-config` | Core | `config.toml`: strict parsing, defaults, validation |
 | `relay-proto` | Core | Relay API v1 types, routes and version negotiation |
-| `mail-store` | Adapters | SQLite schema v1, migrations, sync apply, body cache, journal, FTS5 search with operators (native only) |
+| `mail-store` | Adapters | SQLite schema v2, migrations, sync apply, body cache, journal, drafts, FTS5 search with operators |
+| `mail-imap` | Adapters | IMAP + SMTP for any standard host: password and XOAUTH2, CONDSTORE where offered, MOVE with fallbacks, IDLE. Tested against GreenMail |
+| `mail-jmap` | Adapters | JMAP Core + Mail. Tested against an in-process server only; no push |
+| `mail-auth` | Adapters | Account settings, autoconfig (built-in providers, ISPDB, guesses), OAuth2 with PKCE, keyring secrets |
+| `ravenglass-accounts` | Adapters | Settings + secrets to a connected backend; OAuth token refresh |
 | `mail-mock` | Adapters | Deterministic backend for tests and scenes |
-| `relay-client` | Adapters | `MailBackend` over the Relay API; no HTTP transport or push yet |
-| `mail-imap`, `mail-jmap`, `mail-auth` | Adapters | Not started |
-| `mail-render` | Engine | MIME parse, part choice, HTML sanitizer, text view, HTML to text |
-| `mail-blitz` | Engine | Not started (spike first: `spikes/blitz/`) |
-| `ravenglass-engine` | Engine | Command/Event loop: sync, optimistic actions with journal and undo, reader, outbox, search; desktop runner thread |
-| `ravenglass-relay` | Relay | Request handling over a `MailBackend`; no server, sign-in or push yet |
-| `ravenglass` (`app/`) | App | M0: window, themes, braille wallpaper. Not yet connected to the engine |
+| `relay-client` | Adapters | `MailBackend` over the Relay API, with a native HTTP transport; no push socket yet |
+| `mail-render` | Engine | MIME parse, part choice, HTML sanitizer, text view, HTML to text, message building, replies and forwards |
+| `mail-blitz` | Engine | Blitz host: layout, RGBA tiles, deny-by-default images, link hit-testing, darken, render thread |
+| `ravenglass-engine` | Engine | Command/Event loop: sync, push and polling, optimistic actions with journal and undo, reader, HTML views, drafts, outbox, search; desktop runner thread |
+| `ravenglass-relay` | Relay | Request handling plus an HTTP/WebSocket server with a shared token and CORS; no per-user sign-in, image proxy or Web Push |
+| `ravenglass` (`app/`) | App | See `START_HERE.md` |
 
 ```sh
 cargo test --workspace                         # all crates
+RAVENGLASS_IMAP_TEST=1 cargo test -p mail-imap # IMAP/SMTP against GreenMail (needs Java; starts it itself)
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -- --snap out/night.png --size 1400x880 --scale 2
 ```

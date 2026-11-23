@@ -3,19 +3,14 @@
 Read this, then `docs/PLAN.md` end to end, then `CLAUDE.md`. Work milestone by milestone (plan §6).
 
 ## 0. What already works (verified)
-Checked with Rust 1.99.1 on Linux: `cargo test --workspace` passes (60 tests) and `cargo clippy --workspace --all-targets -- -D warnings` is clean.
-- **M0 is done.** `app/` compiles against Rune at the pinned rev with no changes, and `--snap` renders the wallpaper in Night and Frost.
-- `mail-core`: domain types (serde), the `MailBackend` trait, and five state machines: `account_sync`, `outbox`, `compose`, `image_load`, `html_view`.
-- `mail-mock`: a deterministic two-account, 200-message backend for scenes and tests.
-- `mail-store`: SQLite schema v1 with migrations, sync apply, body cache with eviction, the offline journal, address completion and FTS5 search with operators (about 1 ms per query over 10k messages in release).
-- `mail-render`: MIME parsing, the HTML sanitizer (CSS filter, `cid:` rewrite, tracking-pixel removal), the text view and HTML to text.
-- `ravenglass-engine`: the Command/Event boundary over all of the above, with optimistic actions, undo, offline replay, the outbox and a desktop runner thread.
-- `relay-proto`, `relay-client`, `ravenglass-relay`: the Relay API and both ends of it, tested against each other in-process.
-- `ravenglass-theme`, `ravenglass-brand`: themes and the raven dot field.
+Checked with Rust 1.99.1 on Linux only. The crate table in `README.md` lists every crate and its state.
+- **Engine side:** core types and state machines, the SQLite store with search, MIME parsing and the HTML sanitizer, the Blitz host, the engine (sync, push, actions with undo, reader, HTML tiles, drafts, outbox), IMAP + SMTP, JMAP, accounts and OAuth, the Relay over HTTP, themes and config. All have tests.
+- **Blitz spike:** done, verdict go; read `spikes/blitz/REPORT.md`. Blitz and Rune link together only with `vendor/rune-taffy` (Rune's crate plus one match arm).
+- **Web:** every shared crate passes `cargo check --target wasm32-unknown-unknown`. Nothing has been linked or run in a browser.
 
-**Blitz spike:** done, verdict go; read `spikes/blitz/REPORT.md` (one build fix to Rune's `rune-taffy` is needed before Blitz links next to the app).
+**Not verified anywhere:** macOS and Windows builds; any real mail provider; JMAP against a real server; STARTTLS upgrades; the Relay's push socket; the OS keyring; OAuth against Google or Microsoft (no client id exists).
 
-**Not started:** the grid UI (M2), `mail-blitz`, `mail-imap`, `mail-jmap`, `mail-auth`, the Relay server, and the wasm build. Nothing has been built on macOS or Windows yet; the `Rust` workflow will be the first to try.
+**Not started:** the settings and appearance pages, the compose pane, the biometric prompt (only its state machine exists), packaging and signing, the web app shell, service worker and PWA, per-user Relay sign-in, the Relay image proxy and Web Push.
 
 ## 1. Set up
 ```sh
