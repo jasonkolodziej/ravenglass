@@ -10,6 +10,7 @@ use rune::{El, el};
 
 /// One line for all accounts: the least settled state wins.
 pub fn sync_text(s: &AppState) -> String {
+    if let Some(line) = s.shell.status_line() { return line; }
     if s.link.is_off() { return "offline".into(); }
     let states: Vec<&Sync> = s.mail.sync.values().collect();
     if states.is_empty() { return "starting".into(); }

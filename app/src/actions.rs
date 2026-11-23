@@ -47,6 +47,8 @@ pub enum Action {
     Mailbox(String),
     Refresh,
     Quit,
+    /// Accounts, settings and the app lock (`shell.rs`).
+    Shell(crate::shell::ShellCmd),
 }
 
 impl Action {
@@ -117,6 +119,12 @@ pub fn catalog() -> &'static [Entry] {
             e(Action::PaneShow(Kind::Empty), "pane empty", "Pane: show nothing"),
             e(Action::Theme("night".into()), "theme night", "Theme: Night"),
             e(Action::Theme("frost".into()), "theme frost", "Theme: Frost"),
+            e(Action::Theme("system".into()), "theme system", "Theme: follow the system"),
+            e(Action::Shell(crate::shell::ShellCmd::Colors), "colors", "Theme: colours and contrast"),
+            e(Action::Shell(crate::shell::ShellCmd::ThemeFixContrast), "theme fix-contrast", "Theme: fix contrast"),
+            e(Action::Shell(crate::shell::ShellCmd::AccountList), "account list", "Accounts: list"),
+            e(Action::Shell(crate::shell::ShellCmd::Reload), "reload", "Reload settings"),
+            e(Action::Shell(crate::shell::ShellCmd::Lock), "lock", "Lock now"),
             e(Action::Refresh, "refresh", "Check for new mail"),
             e(Action::Quit, "quit", "Quit"),
         ];
@@ -138,6 +146,7 @@ pub fn parse_command(line: &str) -> Result<Action, String> {
     if line.is_empty() { return Err("empty command".into()); }
     let (head, rest) = line.split_once(char::is_whitespace).map_or((line, ""), |(h, r)| (h, r.trim()));
     let need = |what: &str| if rest.is_empty() { Err(format!(":{head} needs {what}")) } else { Ok(rest.to_owned()) };
+    if let Some(parsed) = crate::shell::parse(head, rest) { return parsed.map(Action::Shell); }
     match head {
         "search" | "s" => return need("a query").map(Action::SearchFor),
         "mailbox" | "mb" => return need("a mailbox name").map(Action::Mailbox),

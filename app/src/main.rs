@@ -7,15 +7,23 @@
 //!            cargo run -p ravenglass -- --script app/scripts/triage.json --out out/triage/
 //!            cargo run -p ravenglass -- --list-scenes
 
+mod accounts_ui;
 mod actions;
 mod demo;
 mod fold;
 mod grid;
+mod jobs;
+mod keymap;
 mod keys;
 mod link;
+mod lock;
 mod modes;
 mod panes;
+mod platform;
+mod profile;
 mod scenes;
+mod settings;
+mod shell;
 mod state;
 mod timefmt;
 mod update;
@@ -39,10 +47,9 @@ pub const FONTS: &[&[u8]] = &[
 ];
 pub const FAMILIES: (&str, &str) = ("IBM Plex Mono", "IBM Plex Mono");
 
-fn init() -> AppState {
-    // Headless runs load everything inline so the first frame already shows mail.
-    if rune::tooling::is_headless() { AppState::demo_inline() } else { AppState::windowed() }
-}
+/// The demo accounts (`--demo`, and headless runs that name no profile) or the profile on disk
+/// (`--profile <dir>`, `RAVENGLASS_PROFILE`, else the platform's folders): see `shell.rs`.
+fn init() -> AppState { AppState::launch() }
 
 fn setup(s: &mut AppState, waker: Waker) { s.waker = Some(waker); }
 
@@ -56,12 +63,15 @@ pub fn flush(s: &mut AppState, tx: &mut Tx) {
             Fx::WakeAt(due) => tx.wake_at(due),
             Fx::ThemeChanged => tx.color_motion(rune::tok::motion::CALM),
             Fx::Quit => tx.quit(),
+            Fx::Instant => tx.instant(),
+            Fx::OpenUrl(url) => if let Err(reason) = platform::open_url(tx, &url) { s.error(reason); },
         }
     }
 }
 
 fn poll(s: &mut AppState, clock: f64, tx: &mut Tx) -> bool {
     let mut changed = s.tick(clock);
+    changed |= s.shell_poll(clock);
     match s.boot {
         // The engine starts once the first frame is out.
         Boot::Cold => {

@@ -1,8 +1,12 @@
 //! Views: plain functions of `AppState`. Everything is placed in whole cells of the [`Grid`]
 //! and every colour comes from a theme role through [`Paint`].
 
+pub mod account_form;
+pub mod colors;
 pub mod line;
 pub mod list;
+pub mod lock;
+pub mod onboarding;
 pub mod palette;
 pub mod rail;
 pub mod reader;
@@ -51,6 +55,7 @@ pub struct Paint {
     pub link: Color,
     pub header_key: Color,
     pub error: Color,
+    pub warn: Color,
     pub wallpaper: Color,
 }
 
@@ -76,6 +81,7 @@ impl Paint {
             link: role("mail.link"),
             header_key: role("mail.header.key"),
             error: role("state.error"),
+            warn: role("state.warn"),
             wallpaper: role(theme.ui.wallpaper_role.as_deref().unwrap_or("wallpaper")),
         }
     }
@@ -128,6 +134,9 @@ pub fn root(s: &AppState, cx: &mut Cx<AppState>) -> El {
     let chrome = Chrome::of(&g, size);
     let narrow = chrome.panes.w < NARROW_COLS;
     s.frame.set(Frame { grid: g, panes: chrome.panes, narrow });
+    s.shell.system_dark.set(Some(cx.env().system_dark));
+    // Locked: the wallpaper and the lock line only. Nothing below is built.
+    if s.shell.lock.concealed() { return lock::screen(s, &ui, chrome.cols, chrome.rows); }
 
     let ws = s.ws();
     let layout = if narrow { ws.panes.layout_single(chrome.panes) } else { ws.panes.layout(chrome.panes) };
@@ -135,12 +144,19 @@ pub fn root(s: &AppState, cx: &mut Cx<AppState>) -> El {
     let several = layout.panes.len() > 1;
 
     let mut root = el().key(ROOT).w_full().h_full().fill(ui.p.bg);
-    root = root.child(tabs::bar(s, &ui, chrome.cols, cx.titlebar_inset()));
-    for pane in &layout.panes {
-        root = root.child(pane_view(s, &ui, pane, pane.id == ws.panes.focus(), several));
-    }
-    for (i, gutter) in layout.gutters.iter().enumerate() {
-        root = root.child(gutter_view(&ui, i, gutter));
+    // The shell's panes take the whole pane area: onboarding (no account yet) and `:colors`.
+    if s.shell.onboarding() {
+        root = root.child(onboarding::title_bar(&ui, chrome.cols)).child(onboarding::pane(s, &ui, chrome.panes));
+    } else if s.shell.colors {
+        root = root.child(tabs::bar(s, &ui, chrome.cols, cx.titlebar_inset())).child(colors::pane(s, &ui, chrome.panes));
+    } else {
+        root = root.child(tabs::bar(s, &ui, chrome.cols, cx.titlebar_inset()));
+        for pane in &layout.panes {
+            root = root.child(pane_view(s, &ui, pane, pane.id == ws.panes.focus(), several));
+        }
+        for (i, gutter) in layout.gutters.iter().enumerate() {
+            root = root.child(gutter_view(&ui, i, gutter));
+        }
     }
     if let Some(x) = chrome.rail_x {
         root = root.child(rail::rail(&ui, chrome.panes.h).absolute(x, g.y(BAR_ROWS)));
@@ -148,6 +164,9 @@ pub fn root(s: &AppState, cx: &mut Cx<AppState>) -> El {
     root = root.child(workspaces::bar(s, &ui, chrome.cols).absolute(0.0, chrome.bar_y));
     if let Mode::Palette { query, selected } = &s.mode {
         root = root.child(palette::palette(&ui, query, *selected, chrome.cols, chrome.rows));
+    }
+    if let Some(flow) = &s.shell.flow {
+        root = root.child(account_form::dialog(&ui, flow, chrome.cols, chrome.rows));
     }
     root
 }

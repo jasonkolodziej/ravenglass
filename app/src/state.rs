@@ -166,6 +166,10 @@ pub enum Fx {
     /// The theme changed: let colours ease.
     ThemeChanged,
     Quit,
+    /// Open a link in the system browser (the OAuth sign-in page).
+    OpenUrl(String),
+    /// Apply this change with no motion: nothing of what was on screen may linger (the lock).
+    Instant,
 }
 
 /// Engine start-up, after the first frame (plan §2 "Data flow").
@@ -241,6 +245,8 @@ pub struct AppState {
     /// The app clock of the last poll or key (seconds; virtual when headless).
     pub clock: f64,
     pub frame: Cell<Frame>,
+    /// The profile, accounts, settings, account form and app lock (`shell.rs`).
+    pub shell: crate::shell::Shell,
 }
 
 /// Below this many columns of pane area the layout collapses to one pane.

@@ -109,7 +109,7 @@ pub fn pane(s: &AppState, ui: &Rc<Ui>, pane: u32, area: Rect) -> El {
         Some(b) => match surface(s.reader_view, &b.text, b.html.as_ref()) {
             Surface::Text(text) => text_surface(ui, text, ws.quotes_open, cols, &mut lines),
             Surface::Html { html, text } => {
-                if html.remote_images > 0 {
+                if html.remote_images > 0 && s.images_offered() {
                     lines.push(Line::new().gap(PAD).put(&grid::clip("remote images blocked · i load once · I always for sender", inner), p.muted).el(ui, cols).key("reader-images-blocked"));
                     lines.push(blank(ui, cols));
                 }
