@@ -4,7 +4,7 @@ An all-Rust, cross-platform (macOS · Windows · Linux) mail client with a chara
 the [Rune](https://github.com/anomalyco/rune) GPU UI framework. HTML email is rendered with
 [Blitz](https://github.com/DioxusLabs/blitz).
 
-> **Status:** the engine side is largely built and tested; the app's grid UI is being connected to it. Nothing has
+> **Status:** the desktop app runs end to end on Linux against a local test mail server. Nothing has
 > been built on macOS or Windows yet, no real mail provider has been used (IMAP is tested against GreenMail, JMAP only
 > against an in-process server), and the web build only type-checks. Start with **[START_HERE.md](START_HERE.md)**.
 
@@ -42,13 +42,15 @@ the [Rune](https://github.com/anomalyco/rune) GPU UI framework. HTML email is re
 | `mail-blitz` | Engine | Blitz host: layout, RGBA tiles, deny-by-default images, link hit-testing, darken, render thread |
 | `ravenglass-engine` | Engine | Command/Event loop: sync, push and polling, optimistic actions with journal and undo, reader, HTML views, drafts, outbox, search; desktop runner thread |
 | `ravenglass-relay` | Relay | Request handling plus an HTTP/WebSocket server with a shared token and CORS; no per-user sign-in, image proxy or Web Push |
-| `ravenglass` (`app/`) | App | See `START_HERE.md` |
+| `ravenglass` (`app/`) | App | Grid UI: list, reader (text and HTML), compose with undo send, modes, command line, palette, panes, workspaces; real accounts from a profile on disk, add-account flow, settings, user themes, app lock. `--demo` runs on sample mail |
 
 ```sh
 cargo test --workspace                         # all crates
 RAVENGLASS_IMAP_TEST=1 cargo test -p mail-imap # IMAP/SMTP against GreenMail (needs Java; starts it itself)
 cargo clippy --workspace --all-targets -- -D warnings
-cargo run -- --snap out/night.png --size 1400x880 --scale 2
+cargo run -- --demo                            # the app on sample mail
+cargo run -- --profile /tmp/rg                 # a fresh profile: then `:account add you@example.com`
+cargo run -- --snap out/night.png --scene default --size 1400x880 --scale 2   # headless; --list-scenes for all
 ```
 
 Licence: MIT OR Apache-2.0 (proposed). Bundled third-party: IBM Plex Mono (OFL, `assets/fonts/`), Rune docs (MIT, `docs/reference/rune-LICENSE`).

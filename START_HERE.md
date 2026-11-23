@@ -5,12 +5,14 @@ Read this, then `docs/PLAN.md` end to end, then `CLAUDE.md`. Work milestone by m
 ## 0. What already works (verified)
 Checked with Rust 1.99.1 on Linux only. The crate table in `README.md` lists every crate and its state.
 - **Engine side:** core types and state machines, the SQLite store with search, MIME parsing and the HTML sanitizer, the Blitz host, the engine (sync, push, actions with undo, reader, HTML tiles, drafts, outbox), IMAP + SMTP, JMAP, accounts and OAuth, the Relay over HTTP, themes and config. All have tests.
+- **App:** the grid UI on the engine: list, reader in text and HTML, compose (reply, reply all, forward, address completion, undo send), modes, `:` command line, palette, panes, workspaces, link hover and open with a phishing check. Real accounts from a profile on disk (`--profile`), `:account add`, settings from `config.toml`, user themes and import, `:colors`, the app lock. 129 app tests; one drives a real IMAP/SMTP account on GreenMail end to end.
 - **Blitz spike:** done, verdict go; read `spikes/blitz/REPORT.md`. Blitz and Rune link together only with `vendor/rune-taffy` (Rune's crate plus one match arm).
 - **Web:** every shared crate passes `cargo check --target wasm32-unknown-unknown`. Nothing has been linked or run in a browser.
+- **Decisions taken without asking** are listed in `.github/plans/0001-ravenglass-build-decisions.md`.
 
-**Not verified anywhere:** macOS and Windows builds; any real mail provider; JMAP against a real server; STARTTLS upgrades; the Relay's push socket; the OS keyring; OAuth against Google or Microsoft (no client id exists).
+**Not verified anywhere:** macOS and Windows builds; any real mail provider; JMAP against a real server; STARTTLS upgrades; the Relay's push socket; the OS keyring; OAuth against Google or Microsoft (no client id exists); autoconfig lookups over the network; the app in a real window with a keyboard (it was run under a virtual display and driven headlessly).
 
-**Not started:** the settings and appearance pages, the compose pane, the biometric prompt (only its state machine exists), packaging and signing, the web app shell, service worker and PWA, per-user Relay sign-in, the Relay image proxy and Web Push.
+**Not started:** Touch ID and Windows Hello (the lock asks for an account password instead), the wallpaper intro animation, threads, context menus, a settings page with forms (settings are `config.toml` and `:` commands), packaging and signing, the web app shell, service worker and PWA, per-user Relay sign-in, the Relay image proxy and Web Push.
 
 ## 1. Set up
 ```sh
