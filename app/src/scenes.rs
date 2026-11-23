@@ -17,6 +17,23 @@ fn triage(s: &mut AppState) {
     s.open_selected(false);
 }
 
+/// Select the first message from `sender` in the list and open it.
+fn open_from(s: &mut AppState, sender: &str) {
+    if let Some(row) = s.rows().iter().position(|e| e.from.email.starts_with(sender)) {
+        s.ws_mut().sel = row;
+        s.open_selected(false);
+    }
+}
+
+fn html_newsletter(s: &mut AppState) { open_from(s, "news@dioxus"); }
+
+fn html_receipt(s: &mut AppState) { open_from(s, "billing@fastmail"); }
+
+fn html_frost(s: &mut AppState) {
+    frost(s);
+    open_from(s, "news@dioxus");
+}
+
 fn frost(s: &mut AppState) {
     s.theme = Theme::frost();
     triage(s);
@@ -100,4 +117,7 @@ pub const SCENES: &[Scene] = &[
     ("undo-toast", undo_toast),
     ("reader-focus", reader_focus),
     ("workspace-gmail", workspace_gmail),
+    ("html-newsletter", html_newsletter),
+    ("html-receipt", html_receipt),
+    ("html-frost", html_frost),
 ];

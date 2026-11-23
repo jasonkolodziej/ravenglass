@@ -5,11 +5,14 @@
 use super::line::{Line, Mark};
 use super::{Ui, wallpaper};
 use crate::grid::{self, Rect};
-use crate::state::AppState;
+use crate::state::{AppState, HtmlPane};
 use crate::timefmt;
 use mail_core::{Address, Attachment};
 use mail_render::{SanitizedHtml, Span, TextBody};
 use ravenglass_engine::ReaderView;
+
+/// Tiles are this many device pixels tall (`mail_blitz::TILE_H`).
+const TILE_H: u32 = 1024;
 use rune::{El, ScrollSpec, col, el};
 use std::rc::Rc;
 
@@ -22,8 +25,8 @@ const PAD: usize = 1;
 pub enum Surface<'a> {
     /// The grid-native text view. Always used for plain-text mail.
     Text(&'a TextBody),
-    /// SEAM(mail-blitz): the HTML view, a pixel surface on its paper card. Until the Blitz host
-    /// lands it falls back to `text` under a one-line notice; see [`html_surface`].
+    /// The HTML view: tiles painted by the render thread, on a paper card. `text` shows while
+    /// the tiles are on their way and if the renderer gives up; see [`html_surface`].
     Html { html: &'a SanitizedHtml, text: &'a TextBody },
 }
 
@@ -97,16 +100,27 @@ pub fn pane(s: &AppState, ui: &Rc<Ui>, pane: u32, area: Rect) -> El {
     );
     lines.push(blank(ui, cols));
 
+    // What the engine lays HTML out at: the text width in points, at the window's scale.
+    s.reader_px.set((g.x(inner), ui.scale));
+    // Rows the HTML card takes beyond the one element it is pushed as.
+    let mut extra_rows = 0;
     match body {
         None => lines.push(Line::new().gap(PAD).put("loading…", p.muted).el(ui, cols)),
         Some(b) => match surface(s.reader_view, &b.text, b.html.as_ref()) {
             Surface::Text(text) => text_surface(ui, text, ws.quotes_open, cols, &mut lines),
-            Surface::Html { html, text } => html_surface(ui, html, text, ws.quotes_open, cols, &mut lines),
+            Surface::Html { html, text } => {
+                if html.remote_images > 0 {
+                    lines.push(Line::new().gap(PAD).put(&grid::clip("remote images blocked · i load once · I always for sender", inner), p.muted).el(ui, cols).key("reader-images-blocked"));
+                    lines.push(blank(ui, cols));
+                }
+                let ours = s.html.message.as_ref() == Some(&env.id);
+                extra_rows = html_surface(ui, ours.then_some(&s.html), text, ws.quotes_open, cols, &mut lines);
+            }
         },
     }
     lines.push(blank(ui, cols));
 
-    ws.reader_extent.set(lines.len().saturating_sub(area.h));
+    ws.reader_extent.set((lines.len() + extra_rows).saturating_sub(area.h));
     let content = col().w(g.x(cols)).children(lines);
     col()
         .key(AppState::reader_key(pane))
@@ -119,14 +133,29 @@ pub fn pane(s: &AppState, ui: &Rc<Ui>, pane: u32, area: Rect) -> El {
 
 fn blank(ui: &Ui, cols: usize) -> El { el().size(ui.g.x(cols), ui.g.cell_h) }
 
-/// SEAM(mail-blitz): this is where the HTML pixel surface plugs in. `mail-blitz` will lay
-/// `html` out at `cols` cells wide off the UI thread and hand back a `rune::Pixels`; this
-/// function then pushes one element, `el().pixels(&pixels)`, sized to the document's height in
-/// whole rows, on its paper card. Until then the HTML view shows the text view under a notice.
-fn html_surface(ui: &Ui, _html: &SanitizedHtml, text: &TextBody, quotes_open: bool, cols: usize, out: &mut Vec<El>) {
-    out.push(Line::new().gap(PAD).put("html view is not built yet · showing the text view", ui.p.muted).el(ui, cols).key("reader-html-pending"));
-    out.push(blank(ui, cols));
-    text_surface(ui, text, quotes_open, cols, out);
+/// The HTML surface: one element as tall as the laid-out document, rounded up to whole rows,
+/// holding each painted tile at its place. Returns the rows it takes beyond the first.
+fn html_surface(ui: &Ui, pane: Option<&HtmlPane>, text: &TextBody, quotes_open: bool, cols: usize, out: &mut Vec<El>) -> usize {
+    let g = &ui.g;
+    let Some((pane, info)) = pane.filter(|p| !p.failed).and_then(|p| Some((p, p.info?))) else {
+        // Not laid out (yet), or the renderer gave up: the text view is always there.
+        let note = if pane.is_some_and(|p| p.failed) { "simplified view · this message could not be rendered as html" } else { "rendering html…" };
+        out.push(Line::new().gap(PAD).put(note, ui.p.muted).el(ui, cols).key("reader-html-note"));
+        out.push(blank(ui, cols));
+        text_surface(ui, text, quotes_open, cols, out);
+        return 0;
+    };
+    let scale = pane.scale.max(1.0);
+    let (width, height) = (info.width as f32 / scale, info.height as f32 / scale);
+    let rows = ((height / g.cell_h).ceil() as usize).max(1);
+    let mut card = el().key("reader-html").size(g.x(cols), g.y(rows));
+    for (index, pixels) in &pane.tiles {
+        let top = (index * TILE_H) as f32 / scale;
+        let tall = (TILE_H as f32 / scale).min(height - top);
+        if tall > 0.0 { card = card.child(el().absolute(g.x(PAD), top).size(width, tall).pixels(pixels)); }
+    }
+    out.push(card);
+    rows - 1
 }
 
 fn text_surface(ui: &Ui, text: &TextBody, quotes_open: bool, cols: usize, out: &mut Vec<El>) {

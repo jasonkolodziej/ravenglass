@@ -7,11 +7,16 @@ use crate::link::Link;
 use crate::modes::Mode;
 use crate::state::*;
 use mail_core::machine::account_sync;
-use mail_core::{AccountId, FolderId};
-use ravenglass_engine::{Command, Event, PAGE, ReaderView};
+use mail_core::{AccountId, FolderId, MessageId};
+use ravenglass_engine::{Command, DarkMode, Event, HtmlOptions, PAGE, ReaderView, ViewId};
 use ravenglass_theme::Theme;
 use std::cell::Cell;
 use std::collections::VecDeque;
+
+/// The one HTML surface the reader has.
+const HTML_VIEW: ViewId = ViewId(1);
+/// Tiles asked for per message; taller mail shows this much and the text view has the rest.
+const MAX_TILES: u32 = 24;
 
 impl AppState {
     fn with(link: Link, wall: WallClock, boot: Boot) -> AppState {
@@ -34,6 +39,8 @@ impl AppState {
             active: 0,
             mail: Mail::default(),
             reader_view: ReaderView::Html,
+            html: Default::default(),
+            reader_px: Cell::new((0.0, 1.0)),
             toast: None,
             undo: Vec::new(),
             undoing: None,
@@ -150,7 +157,11 @@ impl AppState {
                 }
                 self.settle_selection();
             }
-            Event::Body { id, body } => self.mail.bodies.put(id, *body),
+            Event::Body { id, body } => {
+                let has_html = body.html.is_some();
+                self.mail.bodies.put(id.clone(), *body);
+                if has_html && self.ws().open.as_ref().is_some_and(|e| e.id == id) { self.render_html(id); }
+            }
             Event::Notice(line) => self.toast(line),
             Event::Error { context, message } => {
                 match context.as_str() {
@@ -161,10 +172,31 @@ impl AppState {
                 self.error(format!("{context}: {message}"));
             }
             Event::OutboxState { .. } | Event::ImagesAllowed { .. } | Event::Addresses { .. } | Event::WakeAt(_) | Event::Watch { .. } => {}
-            // Compose and the HTML surface are not drawn yet; their events have nowhere to go.
-            Event::Draft(_) | Event::DraftSaved { .. } | Event::DraftClosed { .. } => {}
-            Event::HtmlLaidOut { .. } | Event::HtmlTile { .. } | Event::LinkHover { .. } | Event::HtmlFailed { .. } => {}
+            // Compose is not drawn yet; its events have nowhere to go.
+            Event::Draft(_) | Event::DraftSaved { .. } | Event::DraftClosed { .. } | Event::LinkHover { .. } => {}
+            Event::HtmlLaidOut { info, .. } => {
+                self.html.info = Some(info);
+                self.html.tiles.clear();
+                for index in 0..info.tiles.min(MAX_TILES) { self.dispatch(Command::HtmlTile { view: HTML_VIEW, index }); }
+            }
+            Event::HtmlTile { tile, .. } => {
+                // `Pixels::set` wakes the window by itself; the view only needs the handle.
+                self.html.tiles.entry(tile.index).or_default().set(tile.width, tile.height, tile.rgba);
+            }
+            Event::HtmlFailed { .. } => self.html.failed = true,
         }
+    }
+
+    /// Ask the engine to lay out the open message's HTML at the reader's current width.
+    fn render_html(&mut self, message: MessageId) {
+        let (points, scale) = self.reader_px.get();
+        // Before the first frame the reader has no width yet; 640 is a sane email width.
+        let width = if points > 80.0 { points as u32 } else { 640 };
+        // Emails assume a light page, so the card takes the light theme's colours whatever the UI theme.
+        let paper = Theme::frost();
+        let options = HtmlOptions { width, scale: scale.max(1.0), dark: DarkMode::Paper, text: paper.role("ui.text").hex(), paper: paper.role("ui.bg").hex(), link: paper.role("mail.link").hex() };
+        self.html = HtmlPane { message: Some(message.clone()), scale: options.scale, ..Default::default() };
+        self.dispatch(Command::RenderHtml { view: HTML_VIEW, message, options });
     }
 
     /// Point each mailbox workspace at its folder once the account's folder list is known, and

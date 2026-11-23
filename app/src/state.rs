@@ -191,6 +191,19 @@ impl WallClock {
     }
 }
 
+/// The HTML surface of the open message: tiles painted by the engine's render thread.
+#[derive(Default)]
+pub struct HtmlPane {
+    pub message: Option<MessageId>,
+    /// Size in device pixels and tile count, once laid out.
+    pub info: Option<ravenglass_engine::HtmlInfo>,
+    /// The scale the tiles were painted at.
+    pub scale: f32,
+    pub tiles: BTreeMap<u32, rune::Pixels>,
+    /// The renderer gave up; the reader shows the text view.
+    pub failed: bool,
+}
+
 /// What the last view run laid out, for handlers that work in cells (pane splits and resizes).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Frame {
@@ -210,6 +223,9 @@ pub struct AppState {
     pub mail: Mail,
     /// The reader's view for HTML mail (`t` flips it). HTML is the product default.
     pub reader_view: ReaderView,
+    pub html: HtmlPane,
+    /// The reader's text width in points and the device scale, as last drawn.
+    pub reader_px: Cell<(f32, f32)>,
     pub toast: Option<Toast>,
     pub undo: Vec<Undoable>,
     /// The entry an `Undo` command in flight is taking back.

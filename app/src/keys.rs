@@ -228,6 +228,8 @@ fn rows() -> Vec<(Action, &'static [&'static str], &'static [&'static str])> {
         (A::GoToMailbox, &["g m"], &[]),
         (A::ToggleView, &["t"], &[]),
         (A::OpenQuotes, &["z o"], &[]),
+        (A::LoadImages { always: false }, &["i"], &[]),
+        (A::LoadImages { always: true }, &["I"], &[]),
         (A::ToggleThread, &["z a"], &[]),
         (A::Visual, &["v"], &[]),
         (A::Undo, &["u"], &["mod+z"]),

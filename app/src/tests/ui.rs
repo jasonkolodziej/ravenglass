@@ -314,3 +314,39 @@ fn every_scene_draws() {
         assert!(els.len() > 20, "{name} draws something");
     }
 }
+
+#[test]
+fn html_mail_shows_as_painted_tiles_and_t_falls_back_to_text() {
+    let mut rt = scene("html-newsletter", (1400.0, 880.0));
+    let info = rt.state.html.info.expect("the engine laid the message out");
+    assert_eq!(rt.state.html.tiles.len() as u32, info.tiles, "every tile arrived");
+    assert!(!rt.state.html.failed);
+    let els = rt.elements();
+    let card = keyed(&els, "reader-html").expect("the HTML card is on screen");
+    assert!(card.rect[3] >= info.height as f32 / rt.state.html.scale, "the card is as tall as the document, in whole rows");
+    assert!(keyed(&els, "reader-images-blocked").is_some(), "the newsletter's hero image is held back");
+    assert!(keyed(&els, "reader-html-note").is_none());
+
+    // A plain-text message has no HTML card, whatever the view setting.
+    let plain = scene("default", (1400.0, 880.0));
+    assert!(keyed(&plain.elements(), "reader-html").is_none());
+
+    // `t` switches the same message to the text view.
+    press(&mut rt, Key::Text("t".into()));
+    settle(&mut rt);
+    let els = rt.elements();
+    assert!(keyed(&els, "reader-html").is_none());
+    assert!(text_in(&els, &AppState::reader_key(rt.state.ws().panes.focus())).contains("Blitz 0.3 is out") || els.iter().any(|e| e.text.as_deref().is_some_and(|t| t.contains("Blitz 0.3 is out"))));
+}
+
+#[test]
+fn allowing_images_lays_the_message_out_again() {
+    let mut rt = scene("html-newsletter", (1400.0, 880.0));
+    let before = rt.state.html.info;
+    rt.state.html.info = None;
+    press(&mut rt, Key::Text("i".into()));
+    settle(&mut rt);
+    // The demo has no network, so the image stays a placeholder, but the view is rendered anew.
+    assert_eq!(rt.state.html.info, before);
+    assert!(rt.state.toast.is_some());
+}

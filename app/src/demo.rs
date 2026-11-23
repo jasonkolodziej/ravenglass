@@ -38,10 +38,25 @@ pub fn is_person(email: &str) -> bool { PEOPLE.iter().any(|p| email.starts_with(
 
 const LINK: &str = "https://ferries.example/norrland/winter";
 
-/// The mock's message with a fuller plain-text body. Headers are kept as the mock wrote them.
+/// Senders whose mail is HTML, each with the fixture whose body it borrows.
+const NEWSLETTERS: [(&str, &[u8]); 2] = [
+    ("news@dioxus.example", include_bytes!("../../fixtures/emails/02-newsletter-tables.eml")),
+    ("billing@fastmail.example", include_bytes!("../../fixtures/emails/04-receipt.eml")),
+];
+
+/// The mock's headers over a fixture's HTML body, for senders in [`NEWSLETTERS`].
+fn as_html(head: &str) -> Option<Vec<u8>> {
+    let fixture = NEWSLETTERS.iter().find(|(sender, _)| head.contains(&format!("<{sender}>"))).map(|(_, raw)| *raw)?;
+    let text = std::str::from_utf8(fixture).ok()?;
+    let body = text.split_once("\r\n\r\n").or_else(|| text.split_once("\n\n"))?.1;
+    Some(format!("{}\r\n\r\n{body}", head.replace("Content-Type: text/plain", "Content-Type: text/html")).into_bytes())
+}
+
+/// The mock's message with a fuller body. Headers are kept as the mock wrote them.
 fn enrich(raw: &[u8]) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(raw) else { return raw.to_vec() };
     let Some((head, body)) = text.split_once("\r\n\r\n") else { return raw.to_vec() };
+    if let Some(html) = as_html(head) { return html; }
     let mut paragraphs = body.split("\r\n\r\n");
     let preview = paragraphs.next().unwrap_or("").trim();
     let signature = paragraphs.next().unwrap_or("").trim();

@@ -84,6 +84,8 @@ impl Paint {
 /// What every view needs: the grid and the colours.
 #[derive(Clone, Copy, Debug)]
 pub struct Ui {
+    /// Device pixels per point.
+    pub scale: f32,
     pub g: Grid,
     pub p: Paint,
     pub wallpaper_opacity: f32,
@@ -122,7 +124,7 @@ pub fn root(s: &AppState, cx: &mut Cx<AppState>) -> El {
     let size = cx.layout_size(ROOT).unwrap_or(crate::WINDOW);
     let ui_spec = &s.theme.ui;
     let g = Grid::measure(ui_spec.font_size.unwrap_or(14.0), ui_spec.line_height.unwrap_or(1.35), cx.env().scale);
-    let ui = Rc::new(Ui { g, p: Paint::of(&s.theme, &s.mode), wallpaper_opacity: ui_spec.wallpaper_opacity.unwrap_or(0.85) });
+    let ui = Rc::new(Ui { g, scale: cx.env().scale, p: Paint::of(&s.theme, &s.mode), wallpaper_opacity: ui_spec.wallpaper_opacity.unwrap_or(0.85) });
     let chrome = Chrome::of(&g, size);
     let narrow = chrome.panes.w < NARROW_COLS;
     s.frame.set(Frame { grid: g, panes: chrome.panes, narrow });

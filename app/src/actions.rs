@@ -23,6 +23,8 @@ pub enum Action {
     Visual,
     ToggleView,
     OpenQuotes,
+    /// Load the open message's remote images: this once, or always for its sender.
+    LoadImages { always: bool },
     ToggleThread,
     Workspace(u8),
     NextTab,
@@ -82,6 +84,8 @@ pub fn catalog() -> &'static [Entry] {
             e(Action::Visual, "visual", "Visual select"),
             e(Action::ToggleView, "view", "Toggle HTML / text view"),
             e(Action::OpenQuotes, "quotes", "Show quoted text"),
+            e(Action::LoadImages { always: false }, "images", "Load remote images once"),
+            e(Action::LoadImages { always: true }, "images-always", "Always load images from this sender"),
             e(Action::ToggleThread, "thread", "Toggle thread"),
             e(Action::Reply, "reply", "Reply"),
             e(Action::ReplyAll, "replyall", "Reply all"),

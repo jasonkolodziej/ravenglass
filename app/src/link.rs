@@ -19,6 +19,8 @@ pub fn demo_engine() -> Result<Engine, String> {
     let store = Store::open_in_memory().map_err(|e| e.to_string())?;
     let mut engine = Engine::new(store, Config::default());
     for backend in DemoBackend::accounts() { engine.add_backend(Arc::new(backend)); }
+    // Without a render thread HTML mail still opens, in the text view.
+    if let Ok(renderer) = ravenglass_engine::Renderer::spawn() { engine.set_renderer(renderer); }
     Ok(engine)
 }
 

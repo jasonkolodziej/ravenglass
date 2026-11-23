@@ -94,6 +94,13 @@ impl AppState {
                     self.dispatch(Command::OpenMessage { id, view: self.reader_view });
                 }
             }
+            Action::LoadImages { always } => {
+                use mail_core::machine::image_load::Scope;
+                if let Some(message) = self.ws().open.as_ref().map(|e| e.id.clone()) {
+                    self.dispatch(Command::AllowImages { message, scope: if always { Scope::Sender } else { Scope::Once } });
+                    self.toast(if always { "images: always for this sender" } else { "images: loaded once" });
+                }
+            }
             Action::OpenQuotes => { let ws = self.ws_mut(); ws.quotes_open = !ws.quotes_open; }
             Action::Workspace(slot) => self.switch_workspace(slot),
             Action::NextTab | Action::PrevTab => self.cycle_tab(),
