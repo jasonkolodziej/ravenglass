@@ -3,7 +3,7 @@
 //! touches the disk does so in a folder of its own under the system's temporary directory.
 
 use crate::keymap;
-use crate::platform::{self, Dirs};
+use crate::platform;
 use crate::profile::{self, Loaded, Profile, parse_args};
 use crate::shell::Services;
 use crate::state::{AppState, Source};
@@ -65,6 +65,18 @@ pub fn real_state(temp: &TempProfile, secrets: Arc<MemorySecrets>) -> AppState {
     AppState::real(profile, loaded, Services::offline(secrets), true)
 }
 
+/// A path from `/`-separated text, joined part by part so it compares equal on Windows too.
+fn path(text: &str) -> PathBuf {
+    let mut out = PathBuf::from(if text.starts_with('/') { "/" } else { "" });
+    for part in text.split('/').filter(|p| !p.is_empty()) { out.push(part); }
+    out
+}
+
+/// The parts of a path, whichever separator the host uses.
+fn parts(p: &Path) -> Vec<String> {
+    p.to_string_lossy().split(['/', '\\']).filter(|s| !s.is_empty()).map(str::to_owned).collect()
+}
+
 fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
     let map: BTreeMap<String, String> = pairs.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect();
     move |key| map.get(key).cloned()
@@ -73,27 +85,27 @@ fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
 #[test]
 fn linux_uses_the_xdg_folders_and_falls_back_to_the_home_folder() {
     let dirs = platform::linux::dirs(&env(&[("HOME", "/home/huginn")])).expect("a home");
-    assert_eq!(dirs, Dirs { config: "/home/huginn/.config/ravenglass".into(), data: "/home/huginn/.local/share/ravenglass".into() });
+    assert_eq!((parts(&dirs.config), parts(&dirs.data)), (parts(&path("/home/huginn/.config/ravenglass")), parts(&path("/home/huginn/.local/share/ravenglass"))));
     let dirs = platform::linux::dirs(&env(&[("HOME", "/home/huginn"), ("XDG_CONFIG_HOME", "/etc/xdg-huginn"), ("XDG_DATA_HOME", "/var/huginn")])).expect("a home");
-    assert_eq!(dirs, Dirs { config: "/etc/xdg-huginn/ravenglass".into(), data: "/var/huginn/ravenglass".into() });
+    assert_eq!((parts(&dirs.config), parts(&dirs.data)), (parts(&path("/etc/xdg-huginn/ravenglass")), parts(&path("/var/huginn/ravenglass"))));
     // A relative XDG variable is ignored, as the spec says.
     let dirs = platform::linux::dirs(&env(&[("HOME", "/home/huginn"), ("XDG_CONFIG_HOME", "config")])).expect("a home");
-    assert_eq!(dirs.config, PathBuf::from("/home/huginn/.config/ravenglass"));
+    assert_eq!(parts(&dirs.config), parts(&path("/home/huginn/.config/ravenglass")));
     assert_eq!(platform::linux::dirs(&env(&[])), None, "no home, no profile");
 }
 
 #[test]
 fn macos_and_windows_keep_settings_and_data_in_one_application_folder() {
     let mac = platform::macos::dirs(&env(&[("HOME", "/Users/huginn")])).expect("a home");
-    assert_eq!(mac.config, PathBuf::from("/Users/huginn/Library/Application Support/Ravenglass"));
+    assert_eq!(parts(&mac.config), parts(&path("/Users/huginn/Library/Application Support/Ravenglass")));
     assert_eq!(mac.config, mac.data);
     assert_eq!(platform::macos::dirs(&env(&[])), None);
 
     let win = platform::windows::dirs(&env(&[("APPDATA", r"C:\Users\huginn\AppData\Roaming")])).expect("APPDATA");
-    assert!(win.config.starts_with(r"C:\Users\huginn\AppData\Roaming") && win.config.ends_with("Ravenglass"), "{:?}", win.config);
+    assert_eq!(parts(&win.config), ["C:", "Users", "huginn", "AppData", "Roaming", "Ravenglass"]);
     assert_eq!(win.config, win.data);
     let fallback = platform::windows::dirs(&env(&[("USERPROFILE", r"C:\Users\huginn")])).expect("a home");
-    assert!(fallback.config.ends_with(Path::new("AppData").join("Roaming").join("Ravenglass")), "{:?}", fallback.config);
+    assert_eq!(parts(&fallback.config), ["C:", "Users", "huginn", "AppData", "Roaming", "Ravenglass"]);
     assert_eq!(platform::windows::dirs(&env(&[])), None);
 }
 
@@ -108,10 +120,10 @@ fn the_profile_flag_wins_over_the_environment_which_wins_over_the_platform() {
     assert_eq!(Profile::resolve(None, &env(&[])), None);
 
     let one = Profile::at("/tmp/p");
-    assert_eq!(one.config_file(), PathBuf::from("/tmp/p/config.toml"));
-    assert_eq!(one.accounts_file(), PathBuf::from("/tmp/p/accounts.toml"));
-    assert_eq!(one.themes_dir(), PathBuf::from("/tmp/p/themes"));
-    assert_eq!(one.store_file(), PathBuf::from("/tmp/p/mail.db"));
+    assert_eq!(one.config_file(), Profile::at("/tmp/p").config_dir.join("config.toml"));
+    assert_eq!(one.accounts_file(), Profile::at("/tmp/p").config_dir.join("accounts.toml"));
+    assert_eq!(one.themes_dir(), Profile::at("/tmp/p").config_dir.join("themes"));
+    assert_eq!(one.store_file(), Profile::at("/tmp/p").config_dir.join("mail.db"));
 }
 
 #[test]

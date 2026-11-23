@@ -1,5 +1,9 @@
 //! Linux: XDG base directories, and owner-only modes on the profile.
 
+// Every platform's layout is compiled and tested on every platform, so on any one of them the
+// other two are unused outside tests.
+#![allow(dead_code)]
+
 use super::{Dirs, Env};
 #[cfg(target_os = "linux")]
 use std::path::Path;

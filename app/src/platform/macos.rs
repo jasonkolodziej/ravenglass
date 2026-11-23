@@ -1,6 +1,10 @@
 //! macOS: `~/Library/Application Support/Ravenglass` for settings and data alike, owner-only
 //! modes on the profile, and (not yet) Touch ID for the app lock.
 
+// Every platform's layout is compiled and tested on every platform, so on any one of them the
+// other two are unused outside tests.
+#![allow(dead_code)]
+
 #[cfg(target_os = "macos")]
 use super::Unlock;
 use super::{APP_FOLDER, Dirs, Env};

@@ -29,8 +29,11 @@ pub struct Dirs {
 
 /// An absolute path from the environment; relative values are ignored, as the XDG spec says.
 pub(crate) fn absolute(env: Env, key: &str) -> Option<PathBuf> {
-    env(key).filter(|v| !v.is_empty()).map(PathBuf::from).filter(|p| p.is_absolute() || looks_like_windows_path(p))
+    env(key).filter(|v| !v.is_empty()).map(PathBuf::from).filter(|p| p.is_absolute() || looks_like_windows_path(p) || looks_like_unix_path(p))
 }
+
+/// `/home/…` is absolute on Unix, and has to stay so when that layout is tested on Windows.
+fn looks_like_unix_path(p: &Path) -> bool { p.to_string_lossy().starts_with('/') }
 
 /// `C:\…` is absolute on Windows, and has to stay so when the layout is tested elsewhere.
 fn looks_like_windows_path(p: &Path) -> bool {

@@ -2,6 +2,10 @@
 //! the app lock. Files under `%APPDATA%` are already private to the user, so `restrict` keeps the
 //! portable default.
 
+// Every platform's layout is compiled and tested on every platform, so on any one of them the
+// other two are unused outside tests.
+#![allow(dead_code)]
+
 #[cfg(target_os = "windows")]
 use super::Unlock;
 use super::{APP_FOLDER, Dirs, Env};
