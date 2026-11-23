@@ -4,6 +4,18 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+description = "Ravenglass IMAP + SMTP backend: MailBackend for any standard IMAP/SMTP host (password or XOAUTH2)."
 
 [dependencies]
 mail-core = { path = "../mail-core" }
+mail-parser.workspace = true
+tokio.workspace = true
+async-imap.workspace = true
+tokio-rustls.workspace = true
+webpki-roots.workspace = true
+base64.workspace = true
+async-channel.workspace = true
+
+[dev-dependencies]
+ravenglass-engine = { path = "../ravenglass-engine" }
+mail-store = { path = "../mail-store" }
