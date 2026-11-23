@@ -170,3 +170,12 @@ __pycache__/
 
 # GreenMail jar, test certificate and logs (tools/greenmail.sh)
 /tools/.cache/
+
+# Packaging output (packaging/README.md): installers land in target/packager; the macOS job
+# builds the .icns from packaging/icons/Ravenglass.iconset; relay.env holds the real token.
+/dist/
+/packaging/icons/*.icns
+/packaging/relay/relay.env
+/packaging/flatpak/.flatpak-builder/
+/packaging/flatpak/build-dir/
+/packaging/flatpak/cargo-sources.json

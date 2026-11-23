@@ -1,0 +1,68 @@
+# Flatpak manifest (builds from source, offline, as Flathub requires).
+#
+# Flatpak builds have no network, so the crates come from cargo-sources.json, generated from
+# Cargo.lock (git dependencies included) by flatpak-builder-tools:
+#
+#   python3 flatpak-cargo-generator.py ../../Cargo.lock -o cargo-sources.json
+#   flatpak-builder --user --install --force-clean build-dir io.github.jasonkolodziej.Ravenglass.yml
+#   flatpak run io.github.jasonkolodziej.Ravenglass --version
+#
+# See packaging/README.md ("Flatpak"). The .desktop file and metainfo are renamed to the app id
+# here, as Flatpak requires; the .deb and AppImage keep `ravenglass.desktop`.
+id: io.github.jasonkolodziej.Ravenglass
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: ravenglass
+finish-args:
+  - --share=network          # IMAP, SMTP, JMAP, OAuth
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri             # GPU rendering (wgpu)
+  - --talk-name=org.freedesktop.secrets   # account passwords and tokens (keyring)
+  - --filesystem=xdg-download             # saving attachments
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/ravenglass/cargo
+    CARGO_NET_OFFLINE: "true"
+    RUSTUP_TOOLCHAIN: ""     # the SDK's cargo is not a rustup proxy; rust-toolchain.toml is ignored
+modules:
+  - name: ravenglass
+    buildsystem: simple
+    build-commands:
+      - cargo --offline build --release --locked -p ravenglass
+      - install -Dm755 target/release/ravenglass /app/bin/ravenglass
+      - |
+        for d in packaging/icons/hicolor/*/apps; do
+          size="$(basename "$(dirname "$d")")"
+          for f in "$d"/ravenglass.*; do
+            install -Dm644 "$f" "/app/share/icons/hicolor/$size/apps/${FLATPAK_ID}.${f##*.}"
+          done
+          for f in "$d"/ravenglass-light.*; do
+            install -Dm644 "$f" "/app/share/icons/hicolor/$size/apps/${FLATPAK_ID}-light.${f##*.}"
+          done
+        done
+      - |
+        sed -e 's/{{name}}/Ravenglass/' -e '/{{#if comment}}/d' -e '/{{\/if}}/d' \
+            -e 's/{{comment}}/A character-grid mail client/' -e 's/{{exec}}/ravenglass/' \
+            -e "s/{{icon}}/${FLATPAK_ID}/" packaging/linux/ravenglass.desktop \
+          > "${FLATPAK_ID}.desktop"
+        install -Dm644 "${FLATPAK_ID}.desktop" "/app/share/applications/${FLATPAK_ID}.desktop"
+      - |
+        sed -e "s|<launchable type=\"desktop-id\">ravenglass.desktop</launchable>|<launchable type=\"desktop-id\">${FLATPAK_ID}.desktop</launchable>|" \
+            -e "s|<icon type=\"stock\">ravenglass</icon>|<icon type=\"stock\">${FLATPAK_ID}</icon>|" \
+            "packaging/linux/${FLATPAK_ID}.metainfo.xml" > metainfo.xml
+        install -Dm644 metainfo.xml "/app/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - .claude
+          - packaging/flatpak/.flatpak-builder
+          - packaging/flatpak/build-dir
+      - cargo-sources.json

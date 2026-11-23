@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged by cargo-packager over the Info.plist it generates (macos.info-plist-path).
+     mailto is declared here rather than with cargo-packager's deep-link-protocols, because that
+     option also makes the Windows installer take over HKLM\Software\Classes\mailto. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>Email Address URL</string>
+      <key>CFBundleURLSchemes</key>
+      <array><string>mailto</string></array>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+    </dict>
+  </array>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 the Ravenglass contributors</string>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+</dict>
+</plist>

@@ -1,0 +1,26 @@
+# Example: run the Ravenglass Relay behind your own TLS proxy.
+#
+#   cp packaging/relay/relay.env.example packaging/relay/relay.env   # then set a real token
+#   docker compose -f packaging/relay/docker-compose.yml up -d
+#
+# Settings come from relay.env (never commit it). The Relay speaks plain HTTP: publish it on
+# loopback only, as below, and terminate TLS in a reverse proxy (Caddy, nginx, Traefik).
+name: ravenglass-relay
+
+services:
+  relay:
+    image: ghcr.io/jasonkolodziej/ravenglass-relay:latest
+    # Or build it from this checkout:
+    # build: { context: ../.., dockerfile: packaging/relay/Dockerfile }
+    restart: unless-stopped
+    env_file: relay.env
+    ports:
+      - "127.0.0.1:8743:8743"
+    volumes:
+      - relay-data:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  relay-data:

@@ -8,6 +8,7 @@
 //!            cargo run -p ravenglass -- --tree out/tree.json --scene default
 //!            cargo run -p ravenglass -- --script app/scripts/triage.json --out out/triage/
 //!            cargo run -p ravenglass -- --list-scenes
+//! Version:   ravenglass --version                         (prints `ravenglass X.Y.Z` and exits)
 
 mod accounts_ui;
 mod actions;
@@ -121,5 +122,9 @@ pub fn spec() -> AppSpec<AppState> {
 }
 
 fn main() {
+    if std::env::args().skip(1).any(|a| a == "--version" || a == "-V") {
+        println!("ravenglass {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     rune::run(spec());
 }
