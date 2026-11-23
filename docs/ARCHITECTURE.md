@@ -32,7 +32,7 @@ Ravenglass is one Rust codebase that ships as a native desktop mail client (macO
 | Decision | Choice | Why |
 | --- | --- | --- |
 | Language | Rust only (no C/C++/Objective-C engines, no system webviews) | One toolchain, memory safety, one codebase for wasm and native |
-| UI framework | Rune (anomalyco/rune), pinned `dev` rev `0ca07561` | GPU-drawn widgets on desktop and web, headless test tooling |
+| UI framework | Rune (anomalyco/rune), pinned `dev` rev `5e527e71` | GPU-drawn widgets on desktop and web, headless test tooling |
 | HTML engine | Blitz (Stylo + Taffy + Parley), no JavaScript | Pure Rust, shares Taffy and Parley with Rune, no JS attack surface |
 | Look | Character grid modelled on the unstablebuild/rune IDE; Night and Frost themes | Brand and UX decided in the design canvas |
 | Name and icon | Ravenglass; icon D · Braille (dark + light) | Decided 2026-11-13 |
@@ -713,7 +713,7 @@ palette.aqua = "#FF9F43"
 
 ### Sources
 
-- [Rune (anomalyco/rune)](https://github.com/anomalyco/rune): framework and its README, pinned rev `0ca07561`
+- [Rune (anomalyco/rune)](https://github.com/anomalyco/rune): framework and its README, pinned rev `5e527e71`
 - [Blitz on lib.rs](https://lib.rs/crates/blitz-html): Stylo, Taffy and Parley as its parts
 - [Blitz README](https://cdn.jsdelivr.net/gh/dioxuslabs/blitz@main/README.md): project status
 - [Blitz documentation index](https://docsearch.algolia.com/mcp/docs/repo/dioxuslabs/blitz): `wasm_hello` on `wasm32-unknown-unknown`

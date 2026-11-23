@@ -12,7 +12,7 @@ Rune's core crate: views, layout, animation, rendering, text and the native shel
   `.on_drag(|s, drag, tx| ..)`. Handlers are queued and run between frames with `&mut S`. Then the view
   re-runs, and the diff retargets property tracks. Hover and press only retarget tracks; they never
   re-run the view.
-- **Tokens** (`tok.rs`): colours in OKLCH (dark and light themes, six accents), plus space, radius, type
+- **Tokens** (`crates/rune-core/src/tok.rs`): colours in OKLCH (dark and light themes, six accents), plus space, radius, type
   and the motion palette (snappy .25/0, default .3/0, calm .4/0, a .2/0 lead, a .15 fade).
 - **Layout**: Taffy 0.15 at the target state. Text sizes round up to whole device pixels, so layout
   stays on the pixel grid. Keyed nodes retain Taffy's constraint cache between commits; only changed
@@ -71,7 +71,7 @@ Rune's core crate: views, layout, animation, rendering, text and the native shel
     (`blur = 2σ`, so the Gaussian standard deviation is `σ = blur * 0.5`). `CALayer.shadowRadius` and
     Sketch / Figma shadow blur specify `r ≈ σ`, so pass `blur = 2.0 * r` to match a `CALayer` shadow
     radius (whereas `.blur(sigma)` takes `σ` directly).
-  - Vector shapes (`shape.rs`): `El::shape(Shape)` and `canvas(shape)` paint strokes (polylines,
+  - Vector shapes (`crates/rune-core/src/shape.rs`): `El::shape(Shape)` and `canvas(shape)` paint strokes (polylines,
     round or butt caps, open or closed) and fills (simple polygons, ear-clipped) in the element's own
     points, or in a `view_box` stretched to the element's size; `Path` flattens quadratic and cubic
     Béziers. Strokes are one analytic capsule/box per
@@ -95,7 +95,7 @@ Rune's core crate: views, layout, animation, rendering, text and the native shel
   outlines are rasterised through a port of CoreGraphics' glyph pipeline into a 2048² R8 shelf
   atlas, at CoreGraphics' subpixel pen steps, with a 1 px zeroed border per glyph and
   pixel-snapped baselines.
-  **Font smoothing** (`FontSmoothing`, `text/coretext_match.rs`) picks how glyphs are rasterised
+  **Font smoothing** (`FontSmoothing`, `crates/rune-text/src/raster/coretext_match.rs`) picks how glyphs are rasterised
   and placed, app-wide with `App::new(spec).font_smoothing(FontSmoothing::Off)` (or
   `WindowSpec::font_smoothing`), or while running with `Tx::set_font_smoothing(mode)`, which
   rasterises the new mode's glyphs on the next frame (each mode keeps its own atlas entries, so a
@@ -105,7 +105,7 @@ Rune's core crate: views, layout, animation, rendering, text and the native shel
     fifths of a device pixel below 8⅓ ppem, quarters to 11.1, thirds to 16.7, halves to 33.3 and
     whole pixels above; coverage drawn as is; sRGB blending; CoreGraphics' curve flattening and
     its y autohinter at 7–18 ppem) plus font smoothing's outline dilation, a radius set by the
-    ink's luminance and the device ppem (`text/macos/smoothing.rs`, `ApplePipeline::SMOOTHED`).
+    ink's luminance and the device ppem (`crates/rune-text/src/raster/macos/smoothing.rs`, `ApplePipeline::SMOOTHED`).
   - `Off`: what macOS browsers draw for `-webkit-font-smoothing: antialiased`, CoreText with font
     smoothing off. Apple's pipeline without the dilation
     (`ApplePipeline::UNSMOOTHED`); lighter than `On`. Coverage takes an exponent keyed to the
@@ -115,28 +115,28 @@ Rune's core crate: views, layout, animation, rendering, text and the native shel
     grid fitting on, grayscale antialiasing, the face at the run's variation coordinates, read in
     place from Parley's bytes), pens sit on Skia's quarter pixels, and Skia's gamma tables
     (sRGB, contrast 1, eight luminance buckets) weigh each mask by its ink
-    (`text/windows/`). Off Windows it draws as `Off`.
+    (`crates/rune-text/src/raster/windows/`). Off Windows it draws as `Off`.
   - `Windfoil`: Rune's own text with CoreText's weight, the same
     on every OS. Each glyph's exact pixel coverage from its outline, Windfoil's closed-form box filter over
     xy-monotone quadratics (DesLauriers 2026), with CoreText's dilation (times `TEXT_WEIGHT`,
     0.93, which puts its ink within 1% of CoreText's) and y autohint applied per pixel, pens on
-    quarter pixels, coverage drawn as is (`text/outline/`, `text/windfoil.rs`, `outline.wgsl`).
+    quarter pixels, coverage drawn as is (`crates/rune-text/src/outline/`, `crates/rune-text/src/raster/windfoil.rs`, `outline.wgsl`).
     Masks at rest are filled on the GPU by the shader that draws text whose scale moves (a zoom,
     a presence scale, a text flight) straight from its outlines, at its resting pen and size
     magnified, so it stays sharp and lands on the mask it rests as. A text's raster path
-    (`text/outline/path.rs`: still, moving, landing), each mask's residency (`text/atlas_fill.rs`:
+    (`crates/rune-text/src/outline/path.rs`: still, moving, landing), each mask's residency (`crates/rune-text/src/atlas/fill.rs`:
     uploaded, pending, filled) and the renderer's shader (`render/variant.rs`: Classic, Windfoil,
     unavailable) are state machines. CJK faces up to 24 ppem draw their TrueType-hinted outlines
     from whole-pixel pens, at half the dilation, so dense ideographs stay legible at 1x. Renderers
     start with the Windfoil shader everywhere but macOS, where the Classic shader keeps drawing
     until text asks for outlines; where it can't be built, the CPU fills the same masks
-    (`text/outline/cover.rs`) and moving text draws from them.
+    (`crates/rune-text/src/outline/cover.rs`) and moving text draws from them.
   - `WindfoilChromium`, the default everywhere but macOS and a Mac's browser, then `Slug`,
     `HintedGpu` and `Hinted`: the other ways to draw from the outline store. Each takes Chromium's weight (no dilation, Skia's text gamma):
     Windfoil's box coverage of the design outline, Slug's two-ray winding (`outline_slug` in
     `outline.wgsl`), the outline after skrifa's light autohint, and that autohinted outline on
     whole-pixel pens, which is Chromium's text on Linux. `FontSmoothing::ALL` lists every mode and
-    `FontSmoothing::support` says whether this machine draws one as named (`text/support.rs`).
+    `FontSmoothing::support` says whether this machine draws one as named (`crates/rune-text/src/raster/support.rs`).
   - `WindfoilRgb` and `ClearType` (Windows): subpixel text. Masks hold three coverages a pixel
     (Windfoil's box about each subpixel, or DirectWrite's `CLEARTYPE_3x1`), and the window draws
     them with a dual-source pipeline that blends each channel by its own (`render/variant.rs`,
@@ -345,7 +345,7 @@ policy changes are applied in the same mutation phase.
   `TextStyle` picks a `Family`.
 - **Icons** (`icon(&Icon, size)`): SVG icon bodies (as in `@opencode/ui`'s catalog) rasterised into
   the glyph atlas.
-- **Themes as data** (`theme.rs`): `Theme::from_json(src, dark)` reads named tokens (hex, rgba or
+- **Themes as data** (`crates/rune-core/src/theme.rs`): `Theme::from_json(src, dark)` reads named tokens (hex, rgba or
   references, plus numbers). `"blend": {"mode": "srgb", "over": token}` says translucent tokens are
   authored for a browser's sRGB blending: they resolve as authored in a window that blends in sRGB
   (the default) and re-solved over `over` in one that blends in linear light, following the mode
@@ -435,7 +435,7 @@ policy changes are applied in the same mutation phase.
   view (see [below](#canvas-handlers-live-only-events-and-coordinate-spaces)).
   `cargo run -p rune --example canvas_input` drives a canvas through all of it headlessly:
   wheel pan, pinch about the pointer, Space + drag, middle drag and a Focus button.
-- **Timeline growth** (`.growth(GrowthSpec { spring, edge })`, `growth.rs`): rows of a stack ease
+- **Timeline growth** (`.growth(GrowthSpec { spring, edge })`, `crates/rune-core/src/growth.rs`): rows of a stack ease
   their heights render-side on `GROWTH` (0.32 s, bounce 0) in fixed 1/240 s substeps, so 30, 60 and
   120 fps give the same curve. Desktop's per-frame caps are per-second here (start, ramp, max, long,
   carrying-tail, near-target), and every row eases into its target. Positions come from the presented
@@ -705,7 +705,7 @@ Staying fast afterwards is "Fast apps" (`site/src/FastApps.tsx`) and "Smooth scr
   `Compositor::features` asks for more than the native backend offers (`TIMESTAMP_QUERY` and `IMMEDIATES`) draws
   with wgpu instead, every frame: log
   `rune::describe_gpu(frame.device)` once to see which backend a window got and why, or set `RUNE_GPU_LOG=1`.
-- **Precompiled Metal uber shader.** `crates/rune/src/uber.metallib` is loaded through wgpu's passthrough shaders,
+- **Precompiled Metal uber shader.** `crates/rune/src/shaders/uber.metallib` is loaded through wgpu's passthrough shaders,
   skipping WGSL translation and Metal's compile (`Renderer::new` 232 ms to 85 ms on a cold shader cache). The WGSL
   path is the fallback when the adapter lacks passthrough support, when `RUNE_DISABLE_METALLIB=1`, when the
   fingerprint doesn't match or when Metal rejects the library. Rune's own Metal backend (`metal-backend`) loads
@@ -745,6 +745,27 @@ Staying fast afterwards is "Fast apps" (`site/src/FastApps.tsx`) and "Smooth scr
 - **Reuse a hidden window.** `keep_running()` / `windowless()` plus `AppHandle::hide()`, `show()` and `open()`
   (or `WindowOptions::launcher_panel()` for a retained panel that reveals cached pixels) make a re-summon cost a
   show instead of a launch.
+- **Windows: the first frame needs no GPU.** A window opens on the CPU renderer: its first frame is painted into
+  a buffer, copied to the window with GDI while it is cloaked, and shown; a below-normal thread then makes the
+  adapter, device, swap chain and pipelines and takes the frames over. What is left before that frame is the
+  loader, the event loop's first window, `CreateWindowExW` and the view itself, so keep the DLLs a first frame
+  doesn't call out of the import table (`/DELAYLOAD` in the app's `build.rs`: a linker argument a library can't
+  pass for an app).
+- **Windows: start the app without the setup's compatibility layer.** Windows starts anything it takes for a
+  setup program (a file named `*-setup.exe`, for one) with `__COMPAT_LAYER=DetectorsAppHealth` in its
+  environment, and every process created with that variable runs with ntdll's shim engine: `apphelp.dll` loads
+  and hooks each module's imports before `main` (a plain Rune window: 13,272 µs to `main` without it, 24,424 µs
+  with it). The variable is inherited, so an app its setup starts has it, and so does everything that app starts,
+  an update's relaunch included. Have the setup start the app with the variable removed
+  (`Command::env_remove("__COMPAT_LAYER")`), and drop the assistant's layers (`DetectorsAppHealth`, `Installer`)
+  from the app's own environment first thing in `main`. A terminal inside an app started that way carries it too:
+  remove it from the environment of anything you time.
+- **The floor**: `examples/launch-floor` is one window with the least a first frame can hold (`LAUNCH_FLOOR=bare`)
+  or a desktop app's first screen (`LAUNCH_FLOOR=shell`); it prints every `rune::marks` step in µs from the
+  process's start (`rune::process_age`). `perf/launch.bench.ts` times it with strobe
+  (`strobe bench perf/launch.bench.ts --base exe:<old> --head exe:<new> --target shell --filter warm`). On a
+  12th-generation laptop's integrated GPU the bare window's first frame is 20 ms after the process starts and the
+  shell-shaped one 27 ms, 10 of them before `main`; from a new exe file nothing of which is in memory, 65 and 82 ms.
 - **Measuring**: launch with `open` on a quiet Mac, interleave base and changed builds for 5 to 10 rounds, and
   report medians for window-visible and first-content times, cold and warm. Cold means deleting the app's Metal
   shader caches under `getconf DARWIN_USER_CACHE_DIR`: `com.apple.metal/<bundle id>` and
@@ -977,7 +998,11 @@ close/recreation. On Wayland, use `activate(token)` for authorized focus; tokenl
 also restores them. On macOS, no-focus show uses `orderFrontRegardless`, rather than winit's
 `makeKeyAndOrderFront`. Window-manager focus policy still applies. `WindowHandle`
 also provides show/hide/focus, placement and topmost control on the event thread.
-The app owns its tray; Rune supplies the window lifetime and handles.
+`rune::Tray` provides a system tray icon and menu on Windows (`Shell_NotifyIcon`) and
+Linux (StatusNotifierItem / `dbusmenu`, with the default `dbus` feature). On macOS (and
+other platforms), `Tray::new` returns `Err(TrayError::Unsupported)` because macOS status
+items are not implemented yet, so a macOS app still owns its status item while Rune
+supplies the window lifetime and handles.
 `RunOptions::accessory` applies the macOS process policy before the event loop is
 created: no Dock icon/default menu and no activation at launch. Other platforms
 ignore it; `run_windows` keeps its regular-launch default.
@@ -1237,6 +1262,12 @@ A root `.on_window_focus(|state: &mut State, focused, tx| ...)` receives native
 activation/deactivation in order. It applies to regular windows and interactive
 overlays, independently of text-field focus. Headless tests inject the same events
 with `Runtime::window_focus(bool)`.
+
+`tx.window_visible()` says, in a handler or `poll`, whether the window is on screen: false
+while it's hidden, minimised, covered whole by other windows where the system says so, or its
+browser tab is hidden. Such a window draws no frames, but each change wakes `poll` once, so
+work no one sees (a live preview, a ticker) can pause there and resume when it shows;
+`App::on_visibility` hears the same changes.
 
 `Live<T>` is a cloneable, thread-safe latest-wins handle (`f32`, `[f32; 2]`,
 `[f32; 4]`, `Color`). Call `set(value)` from a producer thread; Rune coalesces a
@@ -1827,13 +1858,15 @@ PNGs. See [`examples/overlay`](../../examples/overlay) for a normal control wind
 one overlay per monitor, a shared remote cursor, a stroke and hit-test toggling.
 
 Monitor enumeration is a startup snapshot. Winit platform/window-manager support
-still governs transparency, placement and topmost behavior. Non-activating macOS
-`NSPanel`s, all-Spaces/fullscreen-space policy and status items need Rune's own Mac
-shell; they are not implemented here.
+still governs transparency, placement and topmost behavior. On macOS, non-activating
+`NSPanel`s with all-Spaces and full-screen policy are available through `App::overlay`
+(see "Edge overlays" below), `WindowOptions::launcher_panel()`, and
+`MacWindowOptions::nonactivating_panel(true)` (ordinary windows can also set
+`MacWindowOptions::collection_behavior`); macOS status items are not implemented.
 Unsupported transparency falls back to opaque rendering; unsupported click-through
 prints the platform error. Metal surfaces retain premultiplied colour for Core Animation.
 
-### Pixels (`pixels.rs`)
+### Pixels (`crates/rune-image/src/pixels.rs`)
 
 `rune::Pixels` is a cloneable, thread-safe RGBA image a producer replaces with
 `set(width, height, rgba)` (straight-alpha sRGB). `El::pixels(&pixels)` draws it scaled
@@ -1945,7 +1978,7 @@ See [`examples/video-tiles`](../../examples/video-tiles/README.md) for the copya
 producer/view boundary, portable byte source, headless benchmark, ownership contract,
 colour defaults and current limitations.
 
-### Playing video and audio (`Player`, `video/`)
+### Playing video and audio (`Player`, `crates/rune-media/src/video/`)
 
 `Player` (alias `Video`) is a cheap-to-clone handle on one clip. Video plays inside an element;
 audio needs none.
@@ -2027,7 +2060,7 @@ tap.play();
 - **Other platforms**: every clip reports `Failed("video playback isn't supported on this
   platform yet")` (or the audio equivalent), and video draws a neutral grey placeholder.
 
-### Recording audio (`Recorder`, `recorder/`)
+### Recording audio (`Recorder`, `crates/rune-media/src/recorder/`)
 
 `Recorder` is a cheap-to-clone handle that records the microphone to a file, with elapsed time
 and a smoothed input level to draw. It mirrors `Player`.
@@ -2109,6 +2142,11 @@ of the primary display, centred or `inset` points from a side. Clicks pass throu
 - Windows: a topmost tool window with `WS_EX_NOACTIVATE` (plus `WS_EX_TRANSPARENT|WS_EX_LAYERED`
   unless interactive), shown with `SW_SHOWNOACTIVATE`; a bottom overlay sits above the taskbar
   (`platform/win32.rs`).
+- Keys: `OverlayOptions::keys: KeyPolicy::OnDemand` lets an overlay take the keyboard on
+  `OverlayHandle::request_keys` or a click, and `capabilities().nonactivating_keys` says whether
+  its backend can: the macOS panel becomes key, a layer-shell (v4) surface asks for keyboard
+  interactivity, an X11 window sets the input focus itself, and a Windows window is made without
+  `WS_EX_NOACTIVATE` and takes the foreground when Windows lets the process. XWayland can't.
 - Checked under headless sway (layer shell, and Xwayland for X11) and on macOS (panel level,
   bounds, hide and reshow). Windows builds are checked with `cargo xwin clippy` only.
 - `Tx::copy` works in overlays (a meeting capsule's Copy button).
@@ -2431,10 +2469,9 @@ target/release/settings                       # the window
 
 ### Depending on Rune
 
-An app pins a `dev` rev and patches the same four crates Rune does, from the same rev. A
-dependency's `[patch]` doesn't reach the workspace that depends on it, and without these the app
-builds against stock crates: winit's patch carries macOS input-method and Windows window-creation
-fixes, parley_engine's carries bidi and shaping fixes.
+Pin Rune to a `dev` revision. In your app's workspace root `Cargo.toml`, patch each crate listed
+in Rune's `[patch.crates-io]` table at that revision. Cargo doesn't inherit patches from a
+dependency. Without `accesskit_macos`, for example, VoiceOver won't recognize Rune's headings.
 
 ```toml
 [dependencies]
@@ -2442,13 +2479,20 @@ rune = { git = "https://github.com/anomalyco/rune", rev = "<rev>" }
 
 [patch.crates-io]
 winit = { git = "https://github.com/anomalyco/rune", rev = "<rev>" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "<rev>" }
 parley_engine = { git = "https://github.com/anomalyco/rune", rev = "<rev>" }
 wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "<rev>" }
 accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "<rev>" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "<rev>" }
 ```
 
-The list is the `[patch.crates-io]` table in Rune's root `Cargo.toml`; when a bump adds an entry
-there, add it here too.
+Patch both `winit` and `sctk-adwaita`, and from the same revision: Rune's winit calls
+`AdwaitaFrame::content_corner_radius`, which only the vendored frame has, so a workspace that
+patches winit without sctk-adwaita doesn't compile. With both, a decorated Wayland window's
+buttons, titlebar and rounded bottom corners are drawn by the vendored frame.
+
+When you update Rune, check its [root `Cargo.toml`](../../Cargo.toml) at the new revision and
+use that same `rev` for Rune and every patch.
 
 ### Linux
 
@@ -2637,6 +2681,8 @@ $L --desktop examples/launcher/backdrop.png --script examples/launcher/scripts/d
   previous presented frame, written only when that frame asked for this one right away, so idle
   time isn't counted.
   `present_ms` is `null` when the system skipped the drawable and absent when no time arrived.
+  A frame carries `hz` when the display's refresh rate differs from the last one written (the
+  header's, at first), so the summary below uses the rate the display settled at.
   Lines are written once their present time arrives, two or three frames late. When the trace
   ends, stderr gets a summary: present-interval p50/p95/max, intervals under 2 ms (frames
   bunched onto the screen together) and over 1.5 refresh periods (missed refreshes), and the

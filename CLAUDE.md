@@ -14,8 +14,8 @@ MCP server `graphify` (serving `graphify-out/graph.json`) is declared in `.mcp.j
 
 - **Read first:** `START_HERE.md`, `docs/PLAN.md`, and Rune's `docs/reference/rune-AGENTS.md` (its rules apply here too).
 - **All Rust. Cross-platform.** No C/C++/Objective-C engines or system webviews. Platform code lives only in `app/src/platform/{macos,windows,linux}.rs`, and each feature there needs a portable default.
-- **Rune is pinned** to `dev` @ `0ca075619d116f8f6e0e3bc8ff815c72c636cac8`. Bump every git line in `Cargo.toml` together, and re-copy Rune's `[patch.crates-io]` table when you do.
-- **`vendor/rune-taffy` is Rune's crate plus one catch-all match arm** (see the comment in the root `Cargo.toml`). Re-copy it from Rune on every rev bump and re-apply the arm.
+- **Rune is pinned** to `dev` @ `5e527e71926906f3fd23d0e2781b64742d938f71`. Bump every git line in `Cargo.toml` together, and re-copy Rune's `[patch.crates-io]` table when you do.
+- **Rune is used unmodified.** We once vendored `rune-taffy` for a `FlexWrap` match arm Blitz needs; that fix is upstream now (see the comment in the root `Cargo.toml`). Don't vendor Rune crates again without asking.
 - **Check your work headlessly** (`--snap`, `--tree`, `--script`; see `docs/reference/rune-core-README.md`, "Agent tooling") and compare it against `brand/preview/`.
 - **No hard-coded colours** in views. Ask `Theme::role("…")`; add new roles to both built-in themes.
 - **The grid:** sizes are whole cells, monospace text, IBM Plex Mono by default.

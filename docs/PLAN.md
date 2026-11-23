@@ -31,7 +31,7 @@ Read these in the Rune repo before you start:
 | `rune-kit --example shell` | Closest existing thing to a three-pane mail layout |
 | `examples/glass-panel`, `examples/frosted-bar`, `examples/settings`, `examples/todo` | Glass materials, backdrop blur, a full settings window, a list app |
 
-**Rev to pin:** `dev` @ `0ca075619d116f8f6e0e3bc8ff815c72c636cac8` (2026-11-13). `dev` is never rewritten.
+**Rev to pin:** `dev` @ `5e527e71926906f3fd23d0e2781b64742d938f71` (2026-11-23). `dev` is never rewritten.
 
 ### Toolchain gotcha
 Rune pins Rust **1.99.1** in `rust-toolchain.toml`. The sandbox this plan was written in had only 1.97.0 and couldn't download 1.99.1. On each dev machine and in CI, run `rustup toolchain install 1.99.1`. On Linux, also install `libxkbcommon-dev libwayland-dev` (build) and `libxkbcommon-x11-0 mesa-vulkan-drivers` (windowed runs without a GPU), per Rune's README. Give the app its own `rust-toolchain.toml` with the same channel.
@@ -147,14 +147,16 @@ pub trait MailBackend: Send + Sync {
 An app must patch the same crates Rune patches, **from the same rev**, or it builds against stock crates:
 ```toml
 [dependencies]
-rune     = { git = "https://github.com/anomalyco/rune", rev = "0ca0756…" }
-rune-kit = { git = "https://github.com/anomalyco/rune", rev = "0ca0756…", features = ["markdown"] }
+rune     = { git = "https://github.com/anomalyco/rune", rev = "5e527e7…" }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "5e527e7…", features = ["markdown"] }
 
 [patch.crates-io]
-winit             = { git = "https://github.com/anomalyco/rune", rev = "0ca0756…" }
-parley_engine     = { git = "https://github.com/anomalyco/rune", rev = "0ca0756…" }
-wgpu-hal          = { git = "https://github.com/anomalyco/rune", rev = "0ca0756…" }
-accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "0ca0756…" }
+wgpu-hal          = { git = "https://github.com/anomalyco/rune", rev = "5e527e7…" }
+winit             = { git = "https://github.com/anomalyco/rune", rev = "5e527e7…" }
+sctk-adwaita      = { git = "https://github.com/anomalyco/rune", rev = "5e527e7…" }
+parley_engine     = { git = "https://github.com/anomalyco/rune", rev = "5e527e7…" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "5e527e7…" }
+accesskit_macos   = { git = "https://github.com/anomalyco/rune", rev = "5e527e7…" }
 ```
 Re-check this list against Rune's root `Cargo.toml` whenever you bump the rev. Release builds also need `features = ["tooling"]` on `rune` for the headless flags; debug builds have them always.
 
@@ -421,7 +423,7 @@ Resolved 2026-11-23 (third round):
 11. **Bundle id, publisher, certificates:** the placeholders stay for now, in one place: `packaging/identity.toml`, with `packaging/check-identity.sh` in CI keeping every copy in step.
 12. **Licence:** MIT.
 13. **Relay OIDC:** check ID-token signatures against the provider's published keys.
-14. **Rune layout fix:** goes upstream. Rune's `dev` already handles taffy's balanced-wrap variants, so the work is a Rune bump that drops `vendor/rune-taffy`.
+14. **Rune layout fix:** goes upstream. Rune's `dev` already handles taffy's balanced-wrap variants, so Ravenglass moved to Rune `dev` @ 5e527e7 and dropped `vendor/rune-taffy`.
 15. **`:theme`:** the choice is saved to `config.toml` (`[ui].theme`), editing only that value and keeping the rest of the file.
 16. **Stalwart in CI:** taken from its container image (`tools/stalwart.sh`).
 
