@@ -2969,7 +2969,6 @@ dependencies = [
 [[package]]
 name = "rune-taffy"
 version = "0.0.1"
-source = "git+https://github.com/anomalyco/rune?rev=0ca075619d116f8f6e0e3bc8ff815c72c636cac8#0ca075619d116f8f6e0e3bc8ff815c72c636cac8"
 dependencies = [
  "taffy",
 ]

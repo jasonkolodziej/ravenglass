@@ -29,4 +29,4 @@ accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "0ca07561
 # rune-taffy's exhaustive match does not cover at this rev (see ../REPORT.md). The vendored copy
 # is rune-taffy at the pinned rev plus a catch-all arm in `encode_wrap`.
 [patch."https://github.com/anomalyco/rune"]
-rune-taffy = { path = "../vendor/rune-taffy" }
+rune-taffy = { path = "../../../vendor/rune-taffy" }

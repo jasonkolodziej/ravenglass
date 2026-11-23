@@ -15,7 +15,7 @@ Run it: `cd spikes/blitz/blitz-spike && cargo run --release -- ../../../fixtures
 |---|---|
 | Duplicate Parley or Taffy? | No. One `parley` 0.12 (with Rune's patched `parley_engine`) and one `taffy` 0.15.1 are shared by both |
 | Does it build with Rune's `[patch]` table? | Not unmodified. `blitz-dom` enables Taffy's `flexbox_balance` feature, which adds `FlexWrap::Balance` and `BalanceReverse`. Cargo unifies features, so `rune-taffy`'s exhaustive `match` in `encode_wrap` stops compiling. Rune's current `dev` head (`b7a08d6a`) has the same match |
-| Fix used here | `spikes/blitz/vendor/rune-taffy`: Rune's crate at the pinned rev plus a catch-all arm, applied with `[patch."https://github.com/anomalyco/rune"]`. It was the only conflict |
+| Fix used here | `vendor/rune-taffy`: Rune's crate at the pinned rev plus a catch-all arm, applied with `[patch."https://github.com/anomalyco/rune"]`. It was the only conflict |
 | Paint backend | `blitz-paint` is on `anyrender` 0.14, so the CPU backend must be `anyrender_vello_cpu` 0.18 (not the newest 0.19) |
 | macOS and Windows | Not built. Only Linux was available |
 
