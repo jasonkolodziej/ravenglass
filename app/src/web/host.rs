@@ -256,7 +256,7 @@ fn save_settings(s: &mut AppState) {
 fn mirror(s: &AppState) {
     let state = match &s.web.session {
         Session::Checking => "checking",
-        Session::SignIn(form) if form.error.is_some() => "refused",
+        Session::SignIn(form) if form.error.is_some() => "signin-error",
         Session::SignIn(_) => "signin",
         Session::SigningIn(_) => "signing-in",
         Session::Ready(_) => "ready",

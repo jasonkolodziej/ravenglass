@@ -150,6 +150,16 @@ async function tokenMode() {
     await until(page, 'list rows after the reload', async () => Number(await mark(page, 'rows')) > 0);
     await page.waitForTimeout(500);
     await page.screenshot({ path: join(OUT, '5-reloaded.png') });
+
+    // Offline: the service worker serves the app shell; the page says the Relay is out of reach.
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
+    await page.context().setOffline(true);
+    await page.reload();
+    await until(page, 'an offline start from the service worker', async () => (await mark(page, 'session')) === 'signin-error', 60000);
+    check('the app starts offline from the service worker', true);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(OUT, '8-offline.png') });
+    await page.context().setOffline(false);
     await page.context().close();
     await stop(relay);
     relay = null;
@@ -168,7 +178,7 @@ async function usersMode_() {
     await page.keyboard.press('Tab');
     await page.keyboard.type('not-the-password');
     await page.keyboard.press('Enter');
-    await until(page, 'the refusal', async () => (await mark(page, 'session')) === 'refused');
+    await until(page, 'the refusal', async () => (await mark(page, 'session')) === 'signin-error');
     check('a wrong password is refused', true);
     await page.screenshot({ path: join(OUT, '6-users-refused.png') });
     // The username stays; the password field has the focus again, empty.

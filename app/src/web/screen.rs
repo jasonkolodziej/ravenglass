@@ -74,10 +74,10 @@ fn rows(ui: &Ui, form: &Form, sending: bool, relay: &str, width: usize) -> Vec<(
     }
     out.push(text("", p.muted, "signin-gap-4"));
     match (&form.error, sending) {
-        (_, true) => out.push(text("signing in", p.muted, "signin-state")),
-        (Some(error), false) => out.push(text(error, p.error, "signin-error")),
-        (None, false) if offer.token => out.push(text("The token is kept for this tab only.", p.muted, "signin-note")),
-        (None, false) => out.push(text("The relay keeps the session; this page never sees it.", p.muted, "signin-note")),
+        (_, true) => out.push(text("signing in", p.muted, "signin-message")),
+        (Some(error), false) => out.push(text(error, p.error, "signin-message")),
+        (None, false) if offer.token => out.push(text("The token is kept for this tab only.", p.muted, "signin-message")),
+        (None, false) => out.push(text("The relay keeps the session; this page never sees it.", p.muted, "signin-message")),
     }
     out.push(text("tab next field    enter sign in", p.muted, "signin-hints"));
     out
