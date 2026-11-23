@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# Email fixtures are test data: keep their line endings byte for byte.
+*.eml -text
