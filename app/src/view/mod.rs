@@ -140,6 +140,7 @@ pub fn root(s: &AppState, cx: &mut Cx<AppState>) -> El {
     s.shell.system_dark.set(Some(cx.env().system_dark));
     // Locked: the wallpaper and the lock line only. Nothing below is built.
     if s.shell.lock.concealed() { return lock::screen(s, &ui, chrome.cols, chrome.rows); }
+    if let Some(setup) = &s.shell.passcode_setup { return lock::passcode_screen(setup, &ui, chrome.cols, chrome.rows); }
 
     let ws = s.ws();
     let layout = if narrow { ws.panes.layout_single(chrome.panes) } else { ws.panes.layout(chrome.panes) };

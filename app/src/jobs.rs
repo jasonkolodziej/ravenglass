@@ -9,7 +9,7 @@ use crate::accounts_ui::Secret;
 use crate::link::Link;
 use crate::platform;
 use crate::profile::{self, Loaded, Profile};
-use crate::shell::Services;
+use crate::shell::{Services, Verifier};
 use mail_auth::autoconfig::{self, Settings};
 use crate::platform::accounts::Redirect;
 use mail_auth::oauth;
@@ -28,8 +28,13 @@ pub enum Job {
     /// Stop the engine, write `accounts.toml` without the account, forget its secrets, and
     /// delete the mail cache when no account is left.
     Remove { id: AccountId, remaining: Vec<AccountConfig>, link: Link },
-    /// The portable app-lock check: `typed` against the account's stored password.
-    Verify { account: AccountId, typed: Secret },
+    /// The portable app-lock check: `typed` against the passcode or an account's password.
+    Verify { verifier: Verifier, typed: Secret },
+    /// Check `typed` against the stored passcode before changing or removing it.
+    CheckPasscode { typed: Secret },
+    /// Hash and store a new passcode.
+    SetPasscode { passcode: Secret },
+    ClearPasscode,
     ImportTheme { path: String, base: String, known: Vec<Theme> },
     SaveTheme { theme: Box<Theme> },
     Reload,
@@ -43,6 +48,9 @@ pub enum JobDone {
     SignedIn(Result<(), String>),
     Removed { id: AccountId, result: Result<(), String>, cache_cleared: bool },
     Verified(bool),
+    PasscodeChecked(bool),
+    /// A passcode was stored (`true`) or removed (`false`), or the store refused.
+    PasscodeSaved(Result<bool, String>),
     ThemeImported(Result<Box<Theme>, String>),
     ThemeSaved(Result<Box<Theme>, String>),
     Reloaded(Box<Loaded>),
@@ -86,7 +94,19 @@ pub fn run(job: Job, ctx: &Ctx, emit: &mut dyn FnMut(JobDone)) {
             });
             emit(JobDone::Removed { id, result, cache_cleared });
         }
-        Job::Verify { account, typed } => emit(JobDone::Verified(platform::check_password(ctx.services.secrets.as_ref(), &account, typed.expose()))),
+        Job::Verify { verifier, typed } => {
+            let secrets = ctx.services.secrets.as_ref();
+            emit(JobDone::Verified(match verifier {
+                Verifier::Passcode => mail_auth::passcode::check(secrets, typed.expose()),
+                Verifier::Account(account) => platform::check_password(secrets, &account, typed.expose()),
+            }));
+        }
+        Job::CheckPasscode { typed } => emit(JobDone::PasscodeChecked(mail_auth::passcode::check(ctx.services.secrets.as_ref(), typed.expose()))),
+        Job::SetPasscode { passcode } => {
+            let stored = mail_auth::passcode::set(ctx.services.secrets.as_ref(), passcode.expose());
+            emit(JobDone::PasscodeSaved(stored.map(|()| true).map_err(|e| e.to_string())));
+        }
+        Job::ClearPasscode => emit(JobDone::PasscodeSaved(mail_auth::passcode::clear(ctx.services.secrets.as_ref()).map(|()| false).map_err(|e| e.to_string()))),
         Job::ImportTheme { path, base, known } => emit(JobDone::ThemeImported(import_theme(ctx, &path, &base, &known).map(Box::new))),
         Job::SaveTheme { theme } => {
             let saved = match &ctx.profile {

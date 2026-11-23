@@ -4,12 +4,16 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Ravenglass Relay: bridges the web client to IMAP/SMTP/JMAP. Request handling only; no server yet."
+description = "Ravenglass Relay: bridges the web client to IMAP/SMTP/JMAP, self-hosted for one person or multi-user."
 
 [features]
 default = ["server"]
-# The HTTP and WebSocket server around the request handler.
-server = ["dep:axum", "dep:tokio"]
+# The HTTP and WebSocket server around the request handler, with sign-in, per-user storage and the image proxy.
+server = [
+    "dep:axum", "dep:tokio", "dep:aes-gcm", "dep:hkdf", "dep:sha2", "dep:argon2", "dep:getrandom", "dep:base64",
+    "dep:subtle", "dep:url", "dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:tokio-rustls", "dep:webpki-roots",
+    "dep:rusqlite", "dep:toml", "dep:mail-auth", "dep:ravenglass-accounts",
+]
 
 [[bin]]
 name = "ravenglass-relay"
@@ -23,6 +27,23 @@ mail-core = { path = "../mail-core" }
 relay-proto = { path = "../relay-proto" }
 serde.workspace = true
 serde_json.workspace = true
+aes-gcm = { workspace = true, optional = true }
+hkdf = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+argon2 = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+subtle = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
+http-body-util = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+webpki-roots = { workspace = true, optional = true }
+rusqlite = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
+mail-auth = { path = "../mail-auth", optional = true }
+ravenglass-accounts = { path = "../ravenglass-accounts", optional = true }
 
 mail-mock = { path = "../mail-mock" }
 
@@ -31,3 +52,5 @@ relay-client = { path = "../relay-client", features = ["http"] }
 ravenglass-engine = { path = "../ravenglass-engine" }
 mail-store = { path = "../mail-store" }
 ureq.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true

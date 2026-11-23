@@ -34,11 +34,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Headers, MessageEvent, Request, RequestCredentials, RequestInit, RequestMode, Response, WebSocket};
 
-/// The header that carries the CSRF value of a cookie session.
-pub const CSRF_HEADER: &str = "x-ravenglass-csrf";
-pub const LOGIN: &str = "/v1/auth/login";
-pub const SESSION: &str = "/v1/auth/session";
-pub const LOGOUT: &str = "/v1/auth/logout";
+pub use relay_proto::auth::{AuthConfig, AuthMode, CONFIG, CSRF_HEADER, LOGIN, LOGOUT, OIDC_START, SESSION};
 
 /// How requests prove who is asking.
 #[derive(Clone, PartialEq, Eq)]
@@ -68,6 +64,8 @@ struct SessionBody { csrf: String, #[serde(default)] user: serde_json::Value }
 pub enum SignInError {
     /// 401: not signed in, or wrong username or password.
     Unauthorized,
+    /// 429: too many attempts; the seconds to wait, when the Relay let the page read them.
+    RateLimited(Option<u32>),
     /// The Relay could not be reached (offline, CORS refused, wrong address).
     Network(String),
     /// Any other answer.
@@ -78,6 +76,7 @@ impl std::fmt::Display for SignInError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SignInError::Unauthorized => f.write_str("not signed in"),
+            SignInError::RateLimited(_) => f.write_str("too many attempts"),
             SignInError::Network(m) => write!(f, "the relay cannot be reached: {m}"),
             SignInError::Server(m) => write!(f, "the relay refused: {m}"),
         }
@@ -115,7 +114,8 @@ impl Transport for WebTransport {
             let (credentials, extra) = credentials(&self.auth, method);
             headers.extend(extra);
             let body = (method == Method::Post).then_some(body);
-            fetch(&url, verb, &headers, body, credentials).await.map_err(MailError::Network)
+            let answer = fetch(&url, verb, &headers, body, credentials).await.map_err(MailError::Network)?;
+            Ok(HttpResponse { status: answer.status, body: answer.body })
         }))
     }
 }
@@ -127,6 +127,21 @@ fn credentials(auth: &Auth, method: Method) -> (RequestCredentials, Vec<(&'stati
         Auth::Token(token) => (RequestCredentials::Omit, vec![("authorization", format!("Bearer {token}"))]),
     }
 }
+
+/// Which sign-in the Relay offers (`GET /v1/auth/config`, no credentials). `None`: the Relay
+/// does not say (one from before that route), so the page offers every form it has.
+pub async fn auth_config(base: &str) -> std::result::Result<Option<AuthConfig>, SignInError> {
+    let url = format!("{}{CONFIG}", base.trim_end_matches('/'));
+    let answer = fetch(&url, "GET", &[], None, RequestCredentials::Omit).await.map_err(SignInError::Network)?;
+    match answer.status {
+        200..=299 => serde_json::from_slice(&answer.body).map(Some).map_err(|e| SignInError::Server(format!("unreadable answer: {e}"))),
+        404 | 405 => Ok(None),
+        status => Err(SignInError::Server(format!("HTTP {status}"))),
+    }
+}
+
+/// Where the Relay's OIDC sign-in starts: a top-level navigation, which comes back signed in.
+pub fn oidc_start(base: &str) -> String { format!("{}{OIDC_START}", base.trim_end_matches('/')) }
 
 /// Is there a cookie session? `Unauthorized` means show the sign-in screen.
 ///
@@ -154,7 +169,8 @@ pub async fn login(base: &str, username: &str, password: &str) -> std::result::R
 /// End a cookie session. Best effort: the cookie is the Relay's to clear.
 pub async fn logout(base: &str, csrf: &str) -> std::result::Result<(), SignInError> {
     let url = format!("{}{LOGOUT}", base.trim_end_matches('/'));
-    let answer = fetch(&url, "POST", &[(CSRF_HEADER, csrf.to_owned())], Some(Vec::new()), RequestCredentials::Include).await.map_err(SignInError::Network)?;
+    let headers = [(CSRF_HEADER, csrf.to_owned()), ("content-type", "application/json".to_owned())];
+    let answer = fetch(&url, "POST", &headers, Some(Vec::new()), RequestCredentials::Include).await.map_err(SignInError::Network)?;
     if (200..300).contains(&answer.status) { Ok(()) } else { Err(SignInError::Server(format!("HTTP {}", answer.status))) }
 }
 
@@ -169,7 +185,7 @@ pub async fn check_token(base: &str, token: &str) -> std::result::Result<Session
     }
 }
 
-fn signed_in(answer: std::result::Result<HttpResponse, String>) -> std::result::Result<SignedIn, SignInError> {
+fn signed_in(answer: std::result::Result<Answer, String>) -> std::result::Result<SignedIn, SignInError> {
     let answer = answer.map_err(SignInError::Network)?;
     match answer.status {
         200..=299 => {
@@ -177,6 +193,7 @@ fn signed_in(answer: std::result::Result<HttpResponse, String>) -> std::result::
             Ok(SignedIn { csrf: body.csrf, user: user_name(&body.user) })
         }
         401 | 403 => Err(SignInError::Unauthorized),
+        429 => Err(SignInError::RateLimited(answer.retry_after)),
         status => Err(SignInError::Server(format!("HTTP {status}"))),
     }
 }
@@ -190,8 +207,11 @@ fn user_name(user: &serde_json::Value) -> String {
     }
 }
 
+/// What a `fetch` answered.
+struct Answer { status: u16, body: Vec<u8>, retry_after: Option<u32> }
+
 /// One `fetch`, its status and whole body. `Err` is a network failure (or CORS refusal).
-async fn fetch(url: &str, method: &str, headers: &[(&str, String)], body: Option<Vec<u8>>, credentials: RequestCredentials) -> std::result::Result<HttpResponse, String> {
+async fn fetch(url: &str, method: &str, headers: &[(&str, String)], body: Option<Vec<u8>>, credentials: RequestCredentials) -> std::result::Result<Answer, String> {
     let init = RequestInit::new();
     init.set_method(method);
     init.set_mode(RequestMode::Cors);
@@ -205,8 +225,10 @@ async fn fetch(url: &str, method: &str, headers: &[(&str, String)], body: Option
     let promise = fetch.call1(&js_sys::global(), &request).map_err(js_text)?.dyn_into::<js_sys::Promise>().map_err(js_text)?;
     let response: Response = JsFuture::from(promise).await.map_err(js_text)?.dyn_into().map_err(js_text)?;
     let status = response.status();
+    // Readable only if the Relay exposes it to the page (`Access-Control-Expose-Headers`).
+    let retry_after = response.headers().get("retry-after").ok().flatten().and_then(|v| v.trim().parse().ok());
     let buffer = JsFuture::from(response.array_buffer().map_err(js_text)?).await.map_err(js_text)?;
-    Ok(HttpResponse { status, body: js_sys::Uint8Array::new(&buffer).to_vec() })
+    Ok(Answer { status, body: js_sys::Uint8Array::new(&buffer).to_vec(), retry_after })
 }
 
 fn js_text(value: JsValue) -> String {

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata (https://www.freedesktop.org/software/appstream/docs/). Installed to
+     /usr/share/metainfo/ by the .deb, the AppImage and the Flatpak. Keep <id> equal to the
+     bundle identifier in app/Cargo.toml, and <launchable> equal to the .desktop file's name. -->
+<component type="desktop-application">
+  <id>io.github.jasonkolodziej.Ravenglass</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <name>Ravenglass</name>
+  <summary>A character-grid mail client</summary>
+  <description>
+    <p>
+      Ravenglass is a fast, keyboard-driven mail client drawn on a monospace character grid.
+      It reads IMAP and JMAP accounts, renders HTML mail safely, and keeps your mail on your
+      machine.
+    </p>
+    <ul>
+      <li>Modal keys, a command line and a command palette</li>
+      <li>Split panes and workspaces</li>
+      <li>Full-text search over the local cache</li>
+      <li>Light and dark themes you can customise</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">ravenglass.desktop</launchable>
+  <icon type="stock">ravenglass</icon>
+  <url type="homepage">https://github.com/jasonkolodziej/ravenglass</url>
+  <url type="bugtracker">https://github.com/jasonkolodziej/ravenglass/issues</url>
+  <developer id="io.github.jasonkolodziej">
+    <name>Ravenglass contributors</name>
+  </developer>
+  <categories>
+    <category>Network</category>
+    <category>Email</category>
+  </categories>
+  <provides>
+    <binary>ravenglass</binary>
+    <mediatype>x-scheme-handler/mailto</mediatype>
+  </provides>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.0.0" date="2026-11-23">
+      <description><p>Development build.</p></description>
+    </release>
+  </releases>
+</component>

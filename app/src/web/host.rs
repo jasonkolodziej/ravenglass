@@ -8,7 +8,7 @@
 //! engine in a Worker (architecture §6), so a reload syncs again from the Relay.
 
 use super::screen;
-use super::session::{self, Effect, Event, Grant, Problem, Session, Signed};
+use super::session::{self, Effect, Event, Grant, Offer, Problem, Session, Signed};
 use crate::keys::KeyPress;
 use crate::link::Link;
 use crate::platform::web::{self as browser, Keep};
@@ -16,7 +16,7 @@ use crate::state::{AppState, Boot, Source, Workspace};
 use mail_core::AccountId;
 use mail_core::machine::account_sync;
 use ravenglass_engine::{Config, Engine, runner};
-use relay_client::web::{self as relay, Auth, SignInError, WebBackend, WebTransport};
+use relay_client::web::{self as relay, Auth, AuthMode, SignInError, WebBackend, WebTransport};
 use rune::{AppSpec, Cx, El, KeyEvent, Tx};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -65,7 +65,10 @@ fn poll(s: &mut AppState, clock: f64, tx: &mut Tx) -> bool {
     if !s.web.checking && let Some(waker) = s.waker.clone() {
         s.web.checking = true;
         let relay = s.web.relay.clone();
-        ask(s, waker, async move { Event::Checked(check(&relay).await) });
+        ask(s, waker, async move {
+            let (result, offer) = check(&relay).await;
+            Event::Checked(result, offer)
+        });
     }
     let answers = std::mem::take(&mut *s.web.answers.borrow_mut());
     for event in answers {
@@ -102,6 +105,7 @@ fn apply(s: &mut AppState, event: Event) {
                 let (relay, Some(waker)) = (s.web.relay.clone(), s.waker.clone()) else { continue };
                 ask(s, waker, async move { Event::Answered(by_token(&relay, token).await) });
             }
+            Effect::Oidc => browser::navigate(&relay::oidc_start(&s.web.relay)),
             Effect::KeepToken(token) => browser::write(Keep::Tab, TOKEN_KEY, &token),
             Effect::Start(signed) => start(s, signed),
             Effect::Forget => {
@@ -129,15 +133,26 @@ fn ask(s: &AppState, wake: rune::Waker, work: impl Future<Output = Event> + 'sta
     });
 }
 
-/// At start: a token kept by this tab, else a cookie session, else the sign-in screen.
-async fn check(relay: &str) -> Result<Signed, Problem> {
-    if let Some(token) = browser::read(Keep::Tab, TOKEN_KEY).filter(|t| !t.is_empty()) {
+/// At start: what the Relay offers, then a token kept by this tab, else a cookie session, else
+/// the sign-in screen with the forms the Relay takes.
+async fn check(relay: &str) -> (Result<Signed, Problem>, Offer) {
+    let offer = match relay::auth_config(relay).await {
+        Ok(Some(config)) if config.mode == AuthMode::Token => Offer { password: false, token: true, oidc: false },
+        Ok(Some(config)) => Offer { password: config.password, token: false, oidc: config.oidc },
+        Ok(None) => Offer::default(),
+        Err(e) => return (Err(problem(e)), Offer::default()),
+    };
+    if offer.token && let Some(token) = browser::read(Keep::Tab, TOKEN_KEY).filter(|t| !t.is_empty()) {
         let checked = by_token(relay, token).await;
         if matches!(checked, Err(Problem::Refused)) { browser::forget(Keep::Tab, TOKEN_KEY); }
-        return checked;
+        return (checked, offer);
     }
-    let signed = relay::session(relay).await.map_err(problem)?;
-    with_accounts(relay, signed).await
+    if !offer.password && !offer.oidc { return (Err(Problem::Refused), offer); }
+    let checked = match relay::session(relay).await.map_err(problem) {
+        Ok(signed) => with_accounts(relay, signed).await,
+        Err(e) => Err(e),
+    };
+    (checked, offer)
 }
 
 async fn login(relay: &str, user: &str, password: &str) -> Result<Signed, Problem> {
@@ -164,6 +179,7 @@ async fn with_accounts(relay: &str, signed: relay::SignedIn) -> Result<Signed, P
 fn problem(e: SignInError) -> Problem {
     match e {
         SignInError::Unauthorized => Problem::Refused,
+        SignInError::RateLimited(secs) => Problem::Busy(secs),
         SignInError::Network(m) => Problem::Offline(m),
         SignInError::Server(m) => Problem::Relay(m),
     }
@@ -189,7 +205,12 @@ fn start(s: &mut AppState, signed: Signed) {
     }
     s.workspaces = workspaces(&s.workspaces, &signed.accounts);
     s.active = 0;
-    s.open_accounts();
+    if signed.accounts.is_empty() {
+        // A new user of a multi-user Relay: their accounts are added on the Relay (`/v1/me/accounts`).
+        s.toast("signed in · this relay has no mail accounts for you yet");
+    } else {
+        s.open_accounts();
+    }
     browser::persist_storage();
 }
 

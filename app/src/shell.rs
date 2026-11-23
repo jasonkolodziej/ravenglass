@@ -60,6 +60,21 @@ impl Services {
     }
 }
 
+/// What opens the app lock when the OS has no prompt of its own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Verifier {
+    Passcode,
+    /// The stored password of this account.
+    Account(AccountId),
+}
+
+impl Verifier {
+    /// What the lock line asks for.
+    pub fn label(&self) -> String {
+        match self { Verifier::Passcode => "passcode".into(), Verifier::Account(id) => format!("{id} password") }
+    }
+}
+
 /// `:` commands that belong to the shell.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ShellCmd {
@@ -71,6 +86,10 @@ pub enum ShellCmd {
     AccountList,
     Colors,
     Lock,
+    /// Set or change the app-lock passcode.
+    PasscodeSet,
+    /// Remove the app-lock passcode.
+    PasscodeClear,
     ThemeImport(String),
     ThemeSave(String),
     ThemeFixContrast,
@@ -89,7 +108,13 @@ pub fn parse(head: &str, rest: &str) -> Option<Result<ShellCmd, String>> {
         ("account", "signin") => need("an account id", ShellCmd::AccountSignIn),
         ("account", _) => Err(":account takes add, remove, password, signin or list".into()),
         ("colors" | "colours", _) => Ok(ShellCmd::Colors),
-        ("lock", _) => Ok(ShellCmd::Lock),
+        ("lock", "") => Ok(ShellCmd::Lock),
+        ("lock", "passcode") => match arg {
+            "" | "set" | "change" => Ok(ShellCmd::PasscodeSet),
+            "off" | "clear" | "remove" => Ok(ShellCmd::PasscodeClear),
+            _ => Err(":lock passcode takes nothing (set or change) or off".into()),
+        },
+        ("lock", _) => Err(":lock takes nothing, or passcode [off]".into()),
         ("reload", _) => Ok(ShellCmd::Reload),
         ("theme", "import") => need("a file", ShellCmd::ThemeImport),
         ("theme", "save") => need("a name", ShellCmd::ThemeSave),
@@ -116,6 +141,10 @@ pub struct Shell {
     /// The add-account form, when it is up.
     pub flow: Option<Flow>,
     pub lock: Lock,
+    /// A passcode is stored in the secret store.
+    pub passcode: bool,
+    /// The passcode setup screen, when it is up.
+    pub passcode_setup: Option<crate::passcode::Setup>,
     /// Messages whose remote images were allowed in this run (the reader drops its notice).
     pub images_loaded: std::collections::BTreeSet<mail_core::MessageId>,
     /// The OS appearance, as the last view run saw it.
@@ -144,6 +173,8 @@ impl Default for Shell {
             colors: false,
             flow: None,
             lock: Lock::default(),
+            passcode: false,
+            passcode_setup: None,
             images_loaded: Default::default(),
             system_dark: Cell::new(None),
             signin: None,
@@ -159,9 +190,12 @@ impl Shell {
     /// No account yet: the onboarding pane shows in place of the mail panes.
     pub fn onboarding(&self) -> bool { self.real && self.accounts.is_empty() }
 
-    /// The account whose password opens the app lock: the first one that has a password.
-    pub fn verifier(&self) -> Option<AccountId> {
-        self.accounts.iter().find(|a| a.auth == AuthKind::Password).map(|a| a.id.clone())
+    /// What a typed answer on the lock screen is checked against: the passcode when one is set,
+    /// else the password of the first account that has one. `None`: nothing can open the lock,
+    /// so it stays unarmed.
+    pub fn verifier(&self) -> Option<Verifier> {
+        if self.passcode { return Some(Verifier::Passcode); }
+        self.accounts.iter().find(|a| a.auth == AuthKind::Password).map(|a| Verifier::Account(a.id.clone()))
     }
 
     /// What the workspace bar says in place of the sync state, when the shell knows better.
@@ -201,6 +235,8 @@ impl AppState {
         s.shell.inline = inline;
         s.shell.profile = Some(profile);
         s.shell.services = services;
+        // Like the profile, read once before the first frame: does a passcode exist?
+        s.shell.passcode = mail_auth::passcode::is_set(s.shell.services.secrets.as_ref()).unwrap_or(false);
         s.apply_loaded(loaded);
         s.shell.lock = Lock::launch(crate::settings::lock_policy(&s.shell.config), 0.0, s.shell.verifier().is_some());
         if inline { s.start_real_engine(); }
@@ -340,6 +376,26 @@ impl AppState {
                 let can_verify = self.shell.verifier().is_some();
                 self.shell.lock.verified(ok, self.clock, can_verify);
             }
+            JobDone::PasscodeChecked(ok) => {
+                let asked = self.shell.passcode_setup.as_mut().map(|setup| setup.checked(ok));
+                if let Some(asked) = asked { self.passcode_asked(asked); }
+            }
+            JobDone::PasscodeSaved(result) => {
+                self.shell.passcode_setup = None;
+                match result {
+                    Ok(set) => {
+                        self.shell.passcode = set;
+                        self.rearm_lock();
+                        let none_left = !set && self.shell.verifier().is_none();
+                        self.toast(match (set, none_left) {
+                            (true, _) => "passcode set · :lock locks the app",
+                            (false, true) => "passcode removed · the app lock is off until you set one",
+                            (false, false) => "passcode removed · the account password opens the lock",
+                        });
+                    }
+                    Err(reason) => self.error(format!("passcode: {reason}")),
+                }
+            }
             JobDone::ThemeImported(Ok(theme)) | JobDone::ThemeSaved(Ok(theme)) => self.adopt_theme(*theme),
             JobDone::ThemeImported(Err(reason)) | JobDone::ThemeSaved(Err(reason)) => self.error(format!("theme: {reason}")),
             JobDone::Reloaded(loaded) => {
@@ -390,11 +446,17 @@ impl AppState {
         if self.shell.lock.concealed() {
             let verifier = self.shell.verifier();
             if let Asked::Verify(typed) = self.shell.lock.key(press, verifier.is_some(), self.clock) {
+                // An armed lock always has a verifier; without one the answer opens nothing.
                 match verifier {
-                    Some(account) => self.spawn_job(Job::Verify { account, typed }),
-                    None => self.shell.lock.verified(true, self.clock, false),
+                    Some(verifier) => self.spawn_job(Job::Verify { verifier, typed }),
+                    None => self.shell.lock.verified(false, self.clock, false),
                 }
             }
+            return Some(true);
+        }
+        if let Some(setup) = self.shell.passcode_setup.as_mut() {
+            let asked = setup.key(press);
+            self.passcode_asked(asked);
             return Some(true);
         }
         self.shell.lock.activity(self.clock);
@@ -441,8 +503,17 @@ impl AppState {
     pub fn shell_cmd(&mut self, cmd: ShellCmd) {
         match cmd {
             ShellCmd::Lock => {
-                self.shell.lock.lock_now();
-                self.conceal();
+                if self.shell.lock.lock_now() {
+                    self.conceal();
+                } else {
+                    // Nothing could open it again: set a passcode first.
+                    self.start_passcode(crate::passcode::Goal::Set);
+                    self.toast("set a passcode first: nothing else can open the lock");
+                }
+            }
+            ShellCmd::PasscodeSet => self.start_passcode(crate::passcode::Goal::Set),
+            ShellCmd::PasscodeClear => {
+                if self.shell.passcode { self.start_passcode(crate::passcode::Goal::Clear) } else { self.error("no passcode is set") }
             }
             ShellCmd::Colors => self.shell.colors = !self.shell.colors,
             ShellCmd::ThemeFixContrast => self.fix_contrast(),
@@ -455,6 +526,30 @@ impl AppState {
             ShellCmd::AccountPassword(id) => self.reenter(id.trim(), false),
             ShellCmd::AccountSignIn(id) => self.reenter(id.trim(), true),
         }
+    }
+
+    fn start_passcode(&mut self, goal: crate::passcode::Goal) {
+        // Like the lock: the mail leaves the screen in the same frame, with no fade.
+        self.fx.push(Fx::Instant);
+        self.mode = Mode::default();
+        self.shell.passcode_setup = Some(crate::passcode::Setup::start(goal, self.shell.passcode));
+    }
+
+    fn passcode_asked(&mut self, asked: crate::passcode::Asked) {
+        use crate::passcode::Asked;
+        match asked {
+            Asked::Nothing => {}
+            Asked::Cancelled => self.shell.passcode_setup = None,
+            Asked::Check(typed) => self.spawn_job(Job::CheckPasscode { typed }),
+            Asked::Store(passcode) => self.spawn_job(Job::SetPasscode { passcode }),
+            Asked::Remove => self.spawn_job(Job::ClearPasscode),
+        }
+    }
+
+    /// Whether the lock can close follows whether anything can open it.
+    pub fn rearm_lock(&mut self) {
+        let can_verify = self.shell.verifier().is_some();
+        self.shell.lock.set_policy(crate::settings::lock_policy(&self.shell.config), self.clock, can_verify);
     }
 
     fn needs_profile(&mut self) -> bool {

@@ -1,0 +1,461 @@
+# Release: installers for macOS, Windows and Linux, the Relay binaries and its OCI image.
+#
+# Runs on `v*` tags (publishes a GitHub Release and pushes the image to GHCR) and by hand
+# (workflow_dispatch: builds and uploads workflow artifacts only). Every signing step runs only
+# when its secrets exist and otherwise prints an "unsigned" notice; none of them can fail a build
+# for lack of secrets. Secrets and variables are documented in packaging/README.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+    # A packaging change is checked by building everything (no signing secrets are needed, and
+    # nothing is published: publishing and image pushes run only on tags). GitHub ignores the path
+    # filter for tag pushes, so every v* tag still builds and releases.
+    paths: ["packaging/**", ".github/workflows/release.yml", "app/Cargo.toml", "brand/src/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_RELEASE_STRIP: symbols   # ~76 -> ~59 MB binary on Linux; the size budget needs it
+  RUST_TOOLCHAIN: "1.99.1"          # rust-toolchain.toml
+  CARGO_PACKAGER_VERSION: "0.11.8"
+  SIZE_BUDGET_MB: ${{ vars.SIZE_BUDGET_MB || '40' }}   # architecture §13: < 40 MB per installer
+
+jobs:
+  # ---------------------------------------------------------------- version
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+      linux: ${{ steps.v.outputs.linux }}
+    steps:
+      - id: v
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          LINUX_ARM64: ${{ vars.RELEASE_LINUX_ARM64 }}
+        run: |
+          if [ "$REF_TYPE" = tag ]; then
+            version="${REF_NAME#v}"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Linux arm64 needs GitHub's arm64 runners; set the repository variable
+          # RELEASE_LINUX_ARM64=false where they are not available.
+          x64='{"arch":"x86_64","runner":"ubuntu-22.04"}'
+          arm='{"arch":"aarch64","runner":"ubuntu-22.04-arm"}'
+          if [ "$LINUX_ARM64" = false ]; then
+            echo "linux=[$x64]" >> "$GITHUB_OUTPUT"
+          else
+            echo "linux=[$x64,$arm]" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------- Linux
+  linux:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.meta.outputs.linux) }}
+    # 22.04: the oldest glibc GitHub offers, so the AppImage and .deb run on more distributions.
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libxkbcommon-x11-0 \
+            libfontconfig1-dev mesa-vulkan-drivers libvulkan1 file desktop-file-utils appstream
+      - name: Rust ${{ env.RUST_TOOLCHAIN }}
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal && rustup default "$RUST_TOOLCHAIN"
+      - uses: Swatinem/rust-cache@v2
+        with: { key: "release-linux-${{ matrix.arch }}" }
+      - name: Version
+        if: needs.meta.outputs.version != ''
+        run: packaging/set-version.sh "${{ needs.meta.outputs.version }}"
+      - name: Build
+        run: cargo build --release -p ravenglass
+      - name: Smoke test
+        run: target/release/ravenglass --version
+      - name: cargo-packager
+        run: cargo install cargo-packager --version "$CARGO_PACKAGER_VERSION" --locked
+      - name: Package (.deb, AppImage)
+        run: cargo packager -p ravenglass --release --formats deb,appimage
+      - name: Snapshot from the AppImage (software Vulkan)
+        run: |
+          mkdir -p dist/snapshots
+          appimage="$(ls target/packager/*.AppImage)"
+          chmod +x "$appimage"
+          "$appimage" --appimage-extract-and-run --version
+          "$appimage" --appimage-extract-and-run --snap "dist/snapshots/linux-${{ matrix.arch }}.png" \
+            --scene default --demo --size 1400x880 --scale 1
+      - name: Collect
+        run: |
+          mkdir -p dist
+          cp target/packager/*.deb target/packager/*.AppImage dist/
+          dpkg-deb -I dist/*.deb
+          dpkg-deb -c dist/*.deb
+          dpkg-deb -x dist/*.deb "$RUNNER_TEMP/deb"
+          desktop-file-validate "$RUNNER_TEMP/deb/usr/share/applications/ravenglass.desktop"
+          # 22.04's appstreamcli predates some current tags; report, don't fail, there.
+          appstreamcli validate --no-net "$RUNNER_TEMP"/deb/usr/share/metainfo/*.metainfo.xml \
+            || echo "::warning title=AppStream::appstreamcli validate reported problems (see log)"
+      - name: Size budget
+        run: packaging/check-size.sh dist/*.deb dist/*.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-linux-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- macOS (universal)
+  macos:
+    needs: meta
+    runs-on: macos-14
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      HAVE_NOTARY: ${{ secrets.APPLE_API_KEY_P8 != '' && secrets.APPLE_API_KEY_ID != '' && secrets.APPLE_API_ISSUER != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust ${{ env.RUST_TOOLCHAIN }} (both architectures)
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal \
+            --target aarch64-apple-darwin --target x86_64-apple-darwin
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: Swatinem/rust-cache@v2
+        with: { key: "release-macos-universal" }
+      - name: Version
+        if: needs.meta.outputs.version != ''
+        run: packaging/set-version.sh "${{ needs.meta.outputs.version }}"
+      - name: Build arm64 and x86_64, then lipo
+        run: |
+          cargo build --release -p ravenglass --target aarch64-apple-darwin
+          cargo build --release -p ravenglass --target x86_64-apple-darwin
+          mkdir -p target/universal-apple-darwin/release
+          lipo -create -output target/universal-apple-darwin/release/ravenglass \
+            target/aarch64-apple-darwin/release/ravenglass target/x86_64-apple-darwin/release/ravenglass
+          lipo -info target/universal-apple-darwin/release/ravenglass
+          target/universal-apple-darwin/release/ravenglass --version
+      - name: Icon (.icns from the committed .iconset)
+        run: iconutil -c icns packaging/icons/Ravenglass.iconset -o packaging/icons/Ravenglass.icns
+      - name: cargo-packager
+        run: cargo install cargo-packager --version "$CARGO_PACKAGER_VERSION" --locked
+      - name: Signing identity
+        id: sign
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_CERTIFICATE_PASSWORD" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            # cargo-packager takes the identity from its config only; set it for this run.
+            python3 packaging/macos/set-signing-identity.py app/Cargo.toml
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=macOS unsigned::APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD or APPLE_SIGNING_IDENTITY is not set; the .app and .dmg are unsigned and will not pass Gatekeeper."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Notarization key
+        if: steps.sign.outputs.signed == 'true' && env.HAVE_NOTARY == 'true'
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$key"
+          echo "APPLE_API_KEY_PATH=$key" >> "$GITHUB_ENV"
+      - name: Package (.app, .dmg)
+        env:
+          # cargo-packager notarizes the .app when these are set (with a signing identity).
+          APPLE_API_KEY: ${{ steps.sign.outputs.signed == 'true' && env.HAVE_NOTARY == 'true' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ steps.sign.outputs.signed == 'true' && env.HAVE_NOTARY == 'true' && secrets.APPLE_API_ISSUER || '' }}
+        run: cargo packager -p ravenglass --release --target universal-apple-darwin --formats app,dmg
+      - name: Notarize and staple the .dmg
+        if: steps.sign.outputs.signed == 'true' && env.HAVE_NOTARY == 'true'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          dmg="$(ls target/packager/*.dmg)"
+          xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$dmg"
+      - name: Not notarized
+        if: steps.sign.outputs.signed != 'true' || env.HAVE_NOTARY != 'true'
+        run: echo "::notice title=macOS not notarized::APPLE_API_KEY_P8, APPLE_API_KEY_ID or APPLE_API_ISSUER (or signing) is missing; skipping notarytool."
+      - name: Collect
+        run: |
+          mkdir -p dist
+          cp target/packager/*.dmg dist/
+          app="$(ls -d target/packager/*.app)"
+          ditto -c -k --keepParent "$app" "dist/Ravenglass-${{ needs.meta.outputs.version || 'dev' }}-macos-universal.app.zip"
+          rm -f packaging/icons/Ravenglass.icns
+      - name: Size budget
+        run: packaging/check-size.sh dist/*.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-macos-universal
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- Windows
+  windows:
+    needs: meta
+    runs-on: windows-2022
+    defaults:
+      run: { shell: bash }
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      TIMESTAMP_URL: http://timestamp.digicert.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust ${{ env.RUST_TOOLCHAIN }}
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal && rustup default "$RUST_TOOLCHAIN"
+      - uses: Swatinem/rust-cache@v2
+        with: { key: "release-windows-x64" }
+      - name: Version
+        if: needs.meta.outputs.version != ''
+        run: packaging/set-version.sh "${{ needs.meta.outputs.version }}"
+      - name: Build
+        run: cargo build --release -p ravenglass
+      - name: Smoke test
+        run: target/release/ravenglass.exe --version
+      - name: Signing certificate
+        id: sign
+        run: |
+          if [ -n "$WINDOWS_CERTIFICATE" ] && [ -n "$WINDOWS_CERTIFICATE_PASSWORD" ]; then
+            printf '%s' "$WINDOWS_CERTIFICATE" | base64 -d > "$RUNNER_TEMP/cert.pfx"
+            signtool="$(ls "/c/Program Files (x86)/Windows Kits/10/bin/"*/x64/signtool.exe | sort -V | tail -n 1)"
+            echo "SIGNTOOL=$signtool" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Windows unsigned::WINDOWS_CERTIFICATE or WINDOWS_CERTIFICATE_PASSWORD is not set; ravenglass.exe and the MSI are unsigned (SmartScreen will warn)."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Sign ravenglass.exe
+        if: steps.sign.outputs.signed == 'true'
+        run: |
+          "$SIGNTOOL" sign //f "$RUNNER_TEMP/cert.pfx" //p "$WINDOWS_CERTIFICATE_PASSWORD" \
+            //fd sha256 //tr "$TIMESTAMP_URL" //td sha256 target/release/ravenglass.exe
+      - name: cargo-packager
+        run: cargo install cargo-packager --version "$CARGO_PACKAGER_VERSION" --locked
+      - name: Package (MSI)
+        run: cargo packager -p ravenglass --release --formats wix
+      - name: Sign the MSI
+        if: steps.sign.outputs.signed == 'true'
+        run: |
+          "$SIGNTOOL" sign //f "$RUNNER_TEMP/cert.pfx" //p "$WINDOWS_CERTIFICATE_PASSWORD" \
+            //fd sha256 //tr "$TIMESTAMP_URL" //td sha256 target/packager/*.msi
+      - name: Collect
+        run: |
+          rm -f "$RUNNER_TEMP/cert.pfx"
+          mkdir -p dist
+          cp target/packager/*.msi dist/
+      - name: Size budget
+        run: packaging/check-size.sh dist/*.msi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-windows-x64
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- Relay binaries
+  relay:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust ${{ env.RUST_TOOLCHAIN }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target "${{ matrix.target }}"
+          rustup default "$RUST_TOOLCHAIN"
+      - uses: Swatinem/rust-cache@v2
+        with: { key: "release-relay-${{ matrix.target }}" }
+      - name: zig and cargo-zigbuild (musl linker for both architectures)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zig"
+          "$RUNNER_TEMP/zig/bin/pip" install ziglang==0.15.2 cargo-zigbuild==0.24.1
+          echo "$RUNNER_TEMP/zig/bin" >> "$GITHUB_PATH"
+      - name: Version
+        if: needs.meta.outputs.version != ''
+        run: packaging/set-version.sh "${{ needs.meta.outputs.version }}"
+      - name: Build (static)
+        run: cargo zigbuild --release -p ravenglass-relay --target "${{ matrix.target }}"
+      - name: Check it is static
+        run: |
+          bin="target/${{ matrix.target }}/release/ravenglass-relay"
+          file "$bin"
+          file "$bin" | grep -Eq 'statically linked|static-pie linked'
+      - name: Smoke test (x86_64)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          bin="target/${{ matrix.target }}/release/ravenglass-relay"
+          token="ci-smoke-test-token-0123456789"
+          RAVENGLASS_RELAY_TOKEN="$token" RAVENGLASS_RELAY_DEMO=1 RAVENGLASS_RELAY_LISTEN=127.0.0.1:8743 "$bin" &
+          session() {
+            curl -fsS -X POST -H "Authorization: Bearer $token" -H "Ravenglass-Relay-Version: 1" \
+              -H "Content-Type: application/json" -d '{}' http://127.0.0.1:8743/v1/session
+          }
+          for _ in $(seq 50); do session >/dev/null 2>&1 && break; sleep 0.2; done
+          session | tee session.json
+          grep -q '"accounts"' session.json
+          kill %1
+      - name: Collect
+        run: |
+          mkdir -p dist
+          name="ravenglass-relay-${{ needs.meta.outputs.version || 'dev' }}-${{ matrix.target }}"
+          mkdir "$name"
+          cp "target/${{ matrix.target }}/release/ravenglass-relay" LICENSE "$name/"
+          cp packaging/relay/docker-compose.yml packaging/relay/relay.env.example "$name/"
+          tar -czf "dist/$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------- Relay image
+  relay-image:
+    needs: meta
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write      # push to GHCR (tags only)
+      id-token: write      # keyless cosign (tags only, when enabled)
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/ravenglass-relay
+      PUSH: ${{ needs.meta.outputs.release == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image name (lower case)
+        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+      - name: Tags
+        id: tags
+        run: |
+          if [ "$PUSH" = true ]; then
+            v="${{ needs.meta.outputs.version }}"
+            tags="$IMAGE:$v"
+            case "$v" in *-*) ;; *) tags="$tags,$IMAGE:latest" ;; esac
+          else
+            tags="$IMAGE:ci-${GITHUB_SHA::12}"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Version
+        if: needs.meta.outputs.version != ''
+        run: packaging/set-version.sh "${{ needs.meta.outputs.version }}"
+      - name: Build${{ needs.meta.outputs.release == 'true' && ' and push' || ' (no push)' }}
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/relay/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.meta.outputs.version || 'dev' }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: sigstore/cosign-installer@v3
+        if: env.PUSH == 'true'
+      - name: Sign the image (cosign)
+        if: env.PUSH == 'true'
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_KEYLESS: ${{ vars.COSIGN_KEYLESS }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if [ -n "$COSIGN_PRIVATE_KEY" ]; then
+            printf '%s' "$COSIGN_PRIVATE_KEY" > "$RUNNER_TEMP/cosign.key"
+            cosign sign --yes --key "$RUNNER_TEMP/cosign.key" "$IMAGE@$DIGEST"
+            rm -f "$RUNNER_TEMP/cosign.key"
+          elif [ "$COSIGN_KEYLESS" = true ]; then
+            cosign sign --yes "$IMAGE@$DIGEST"
+          else
+            echo "::notice title=Image unsigned::COSIGN_PRIVATE_KEY is not set and COSIGN_KEYLESS is not 'true'; $IMAGE@$DIGEST is unsigned."
+          fi
+
+  # ---------------------------------------------------------------- checksums and release
+  publish:
+    needs: [meta, linux, macos, windows, relay]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the GitHub Release (tags only)
+    env:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - name: Gather
+        run: |
+          mkdir -p release
+          find artifacts -type f ! -path '*/snapshots/*' -exec cp {} release/ \;
+          ls -l release
+      - name: SHA256SUMS
+        working-directory: release
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Sign SHA256SUMS (GPG)
+        working-directory: release
+        run: |
+          if [ -n "$GPG_PRIVATE_KEY" ]; then
+            export GNUPGHOME="$RUNNER_TEMP/gnupg"
+            mkdir -m 700 -p "$GNUPGHOME"
+            printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+              --armor --detach-sign --output SHA256SUMS.asc SHA256SUMS
+            gpg --batch --verify SHA256SUMS.asc SHA256SUMS
+            rm -rf "$GNUPGHOME"
+          else
+            echo "::notice title=Checksums unsigned::GPG_PRIVATE_KEY is not set; SHA256SUMS has no signature."
+          fi
+      - name: Size report
+        run: |
+          {
+            echo "### Release artifacts"
+            echo "| File | Size |"
+            echo "| --- | ---: |"
+            for f in release/*; do printf '| %s | %s |\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)"; done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release/
+      - name: GitHub Release
+        if: needs.meta.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          pre=""
+          case "$TAG" in *-*) pre="--prerelease" ;; esac
+          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --title "Ravenglass $TAG" \
+            --generate-notes --verify-tag $pre

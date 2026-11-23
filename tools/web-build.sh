@@ -57,6 +57,11 @@ if $dev; then args+=(--dev)
 elif command -v wasm-opt >/dev/null; then args+=(--opt)
 else echo "wasm-opt is not on PATH: skipping wasm-opt -Oz (the wasm stays larger)"; fi
 "$rune/scripts/web-build.sh" "${args[@]}"
+# Rune fetches its full Inter faces from beside app.js once the first frame is up. Its script
+# copies them when it finds them in the build's dependency file; make sure they are there.
+for face in "$rune"/crates/rune/assets/web/Inter-*.ttf; do
+    [[ -e $out/$(basename "$face") ]] || cp "$face" "$out/"
+done
 
 # The page around the wasm.
 web="$root/web"
@@ -77,7 +82,15 @@ if [[ -n $relay ]]; then
     connect="$relay ${relay/#http/ws}"
 fi
 stamp=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()[:12])' "$out/app_bg.wasm")
-OUT="$out" RELAY="$relay" CONNECT="$connect" THEME="$theme" STAMP="$stamp" PNGS="${pngs[*]-}" WEB="$web" python3 - <<'PY'
+# Rune adds a few constant <style> elements; the policy allows exactly those, by hash.
+styles=$(python3 -c '
+import base64,hashlib,pathlib,re,sys
+found=set()
+for js in pathlib.Path(sys.argv[1]).rglob("*.js"):
+    for css in re.findall(r"style\.textContent = \x27([^\x27]*)\x27", js.read_text()):
+        found.add("\x27sha256-" + base64.b64encode(hashlib.sha256(css.encode()).digest()).decode() + "\x27")
+print(" ".join(sorted(found)))' "$out/snippets")
+OUT="$out" STYLES="$styles" RELAY="$relay" CONNECT="$connect" THEME="$theme" STAMP="$stamp" PNGS="${pngs[*]-}" WEB="$web" python3 - <<'PY'
 import json, os, pathlib
 out, web = pathlib.Path(os.environ["OUT"]), pathlib.Path(os.environ["WEB"])
 theme = os.environ["THEME"]
@@ -90,7 +103,7 @@ manifest = {
 }
 (out / "manifest.webmanifest").write_text(json.dumps(manifest, indent=2) + "\n")
 page = (web / "index.html").read_text()
-for key, value in {"RELAY": os.environ["RELAY"], "CONNECT": os.environ["CONNECT"], "THEME_COLOR": theme}.items():
+for key, value in {"RELAY": os.environ["RELAY"], "CONNECT": os.environ["CONNECT"], "STYLES": os.environ["STYLES"], "THEME_COLOR": theme}.items():
     page = page.replace("{{" + key + "}}", value)
 (out / "index.html").write_text(page)
 # Everything in the folder (wasm-bindgen's `snippets/` included) but the worker itself.

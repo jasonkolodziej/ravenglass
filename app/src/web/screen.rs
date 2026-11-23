@@ -51,21 +51,33 @@ fn rows(ui: &Ui, form: &Form, sending: bool, relay: &str, width: usize) -> Vec<(
         if focused { line = line.mark(Mark::Caret, p.accent).fill(1, width - 1, p.selection); }
         (line, key)
     };
+    let offer = form.offer;
     let mut out = vec![
         (Line::new().gap(2).bold(&grid::clip("Sign in to the relay", inner), p.text), "signin-title"),
         text(relay, p.muted, "signin-relay"),
         text("", p.muted, "signin-gap-1"),
-        field("user", &form.user, Field::User, "signin-user"),
-        field("password", &form.password.masked(), Field::Password, "signin-password"),
-        text("", p.muted, "signin-gap-2"),
-        text("or, on a single-user relay, its token", p.muted, "signin-or"),
-        field("token", &form.token.masked(), Field::Token, "signin-token"),
-        text("", p.muted, "signin-gap-3"),
     ];
+    if offer.password {
+        out.push(field("user", &form.user, Field::User, "signin-user"));
+        out.push(field("password", &form.password.masked(), Field::Password, "signin-password"));
+    }
+    if offer.oidc {
+        if offer.password { out.push(text("", p.muted, "signin-gap-2")); }
+        out.push(field("", "sign in with your identity provider", Field::Oidc, "signin-oidc"));
+    }
+    if offer.token {
+        if offer.password || offer.oidc {
+            out.push(text("", p.muted, "signin-gap-3"));
+            out.push(text("or, on a single-user relay, its token", p.muted, "signin-or"));
+        }
+        out.push(field("token", &form.token.masked(), Field::Token, "signin-token"));
+    }
+    out.push(text("", p.muted, "signin-gap-4"));
     match (&form.error, sending) {
         (_, true) => out.push(text("signing in", p.muted, "signin-state")),
         (Some(error), false) => out.push(text(error, p.error, "signin-error")),
-        (None, false) => out.push(text("The token is kept for this tab only.", p.muted, "signin-note")),
+        (None, false) if offer.token => out.push(text("The token is kept for this tab only.", p.muted, "signin-note")),
+        (None, false) => out.push(text("The relay keeps the session; this page never sees it.", p.muted, "signin-note")),
     }
     out.push(text("tab next field    enter sign in", p.muted, "signin-hints"));
     out

@@ -3,9 +3,12 @@
 //! the wallpaper and the lock line (`view/lock.rs`); nothing with message content is built.
 //!
 //! How the user proves who they are is the platform's business (`platform::authenticate`). The
-//! portable default is the password of the first password account, typed on the lock screen and
-//! compared through the `SecretStore`. With no such account there is nothing to compare, so the
-//! lock is a privacy curtain that any key lifts.
+//! portable default is something typed on the lock screen and checked off the UI thread: the app
+//! passcode when one is set (`:lock passcode`), else the password of the first password account.
+//!
+//! The lock never closes without a way to open it: with nothing to check against it stays
+//! unarmed (no lock on launch, no idle lock, and `:lock` asks for a passcode to be set first).
+//! Wrong answers are throttled: after three, each attempt waits longer, up to fifteen minutes.
 
 use crate::accounts_ui::Secret;
 use crate::keys::{K, KeyPress};
@@ -24,6 +27,23 @@ pub struct Lock {
     pub checking: bool,
     /// When the idle timer next needs a look, on the app clock.
     due: Option<f64>,
+    /// There is something to check a typed answer against, so the lock may close.
+    armed: bool,
+    /// Wrong answers in a row.
+    failures: u32,
+    /// No answer is taken before this time on the app clock.
+    pub retry_at: Option<f64>,
+}
+
+/// Wrong answers allowed before attempts are spaced out.
+const FREE_ATTEMPTS: u32 = 3;
+/// The longest wait between attempts, in seconds.
+const MAX_WAIT: f64 = 900.0;
+
+/// The wait after `failures` wrong answers: none for the first few, then 5 s doubling.
+pub fn wait_after(failures: u32) -> f64 {
+    if failures < FREE_ATTEMPTS { return 0.0; }
+    (5.0 * f64::from(1u32 << (failures - FREE_ATTEMPTS).min(10))).min(MAX_WAIT)
 }
 
 /// What a key on the lock screen asks of the app.
@@ -38,18 +58,25 @@ impl Default for Lock {
     fn default() -> Self { Lock::launch(Policy { idle_secs: 0.0, lock_on_launch: false }, 0.0, false) }
 }
 
+/// What the lock does with no way to open it: nothing on its own.
+const UNARMED: Policy = Policy { idle_secs: 0.0, lock_on_launch: false };
+
 impl Lock {
     /// `can_verify`: there is a password account to check a typed password against.
     pub fn launch(policy: Policy, now: f64, can_verify: bool) -> Lock {
-        let (state, effects) = app_lock::launch(policy, now);
-        let mut lock = Lock { state, policy, input: Secret::new(), refused: false, checking: false, due: None };
+        let effective = if can_verify { policy } else { UNARMED };
+        let (state, effects) = app_lock::launch(effective, now);
+        let mut lock = Lock { state, policy: effective, input: Secret::new(), refused: false, checking: false, due: None, armed: can_verify, failures: 0, retry_at: None };
         lock.note(&effects);
         if effects.contains(&Effect::Prompt) { lock.prompt(can_verify, now); }
         lock
     }
 
-    /// A new policy from the config, keeping the current state.
-    pub fn set_policy(&mut self, policy: Policy, now: f64) {
+    /// A new policy from the config, or a new answer to whether anything can open the lock,
+    /// keeping the current state.
+    pub fn set_policy(&mut self, policy: Policy, now: f64, can_verify: bool) {
+        self.armed = can_verify;
+        let policy = if can_verify { policy } else { UNARMED };
         self.policy = policy;
         self.due = match (&self.state, policy.idle_secs > 0.0) {
             (State::Unlocked { last_activity }, true) => Some((last_activity + policy.idle_secs).max(now)),
@@ -62,6 +89,9 @@ impl Lock {
 
     /// The lock screen is asking for a password.
     pub fn prompting(&self) -> bool { self.state == State::Prompting }
+
+    /// The lock may close: something can check an answer.
+    pub fn armed(&self) -> bool { self.armed }
 
     /// The next time [`Lock::tick`] has something to do.
     pub fn due(&self) -> Option<f64> { self.due }
@@ -86,18 +116,25 @@ impl Lock {
         effects.contains(&Effect::Conceal)
     }
 
-    pub fn lock_now(&mut self) {
+    /// Lock now. False, and nothing changes, when nothing could open it again.
+    pub fn lock_now(&mut self) -> bool {
+        if !self.armed { return false; }
         app_lock::step(&mut self.state, Event::LockNow, self.policy);
         self.due = None;
         self.input.wipe();
         self.refused = false;
+        true
     }
+
+    /// Seconds until another answer is taken, if it must wait.
+    pub fn waiting(&self, now: f64) -> Option<f64> { self.retry_at.filter(|at| *at > now).map(|at| at - now) }
 
     /// The machine asked for the prompt: the OS's if there is one, else the password line.
     fn prompt(&mut self, can_verify: bool, now: f64) {
         match platform::authenticate() {
             Unlock::Os(ok) => self.verified(ok, now, can_verify),
-            Unlock::Password if !can_verify => self.verified(true, now, can_verify),
+            // Nothing to check against: stay locked rather than open for anyone. An armed lock
+            // cannot get here; this is the backstop.
             Unlock::Password => {}
         }
     }
@@ -118,6 +155,8 @@ impl Lock {
                     self.refused = false;
                 }
                 K::Backspace => self.input.pop(),
+                // Too many wrong answers: the typed text waits until the throttle passes.
+                K::Enter if self.waiting(now).is_some() => {}
                 K::Enter if !self.input.is_empty() => {
                     self.checking = true;
                     self.refused = false;
@@ -136,10 +175,15 @@ impl Lock {
         let effects = app_lock::step(&mut self.state, Event::Prompted { ok }, self.policy);
         if effects.contains(&Effect::Reveal) {
             self.refused = false;
+            self.failures = 0;
+            self.retry_at = None;
             let effects = app_lock::unlocked(&mut self.state, self.policy, now);
             self.note(&effects);
         } else if !ok && self.state == State::Locked && can_verify {
             self.refused = true;
+            self.failures += 1;
+            let wait = wait_after(self.failures);
+            self.retry_at = (wait > 0.0).then_some(now + wait);
             app_lock::step(&mut self.state, Event::Unlock, self.policy);
         }
     }

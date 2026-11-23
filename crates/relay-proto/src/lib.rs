@@ -7,6 +7,10 @@
 //!
 //! One deliberate difference from the appendix sketch: message routes sit under
 //! `/v1/accounts/{a}/`, so the Relay never has to guess which account an id belongs to.
+//!
+//! Sign-in (token or multi-user), per-user accounts, CSRF, CORS and the image proxy are in [`auth`].
+
+pub mod auth;
 
 use mail_core::machine::account_sync;
 use mail_core::*;
@@ -69,13 +73,24 @@ impl From<IdleEvent> for Push {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ErrorCode { Auth, Network, Server, NotFound, BadRequest, UnsupportedVersion, NotImplemented }
+pub enum ErrorCode {
+    Auth, Network, Server, NotFound, BadRequest, UnsupportedVersion, NotImplemented,
+    /// Signed in, but not allowed: a missing or wrong CSRF token, a foreign origin, a refused address.
+    Forbidden,
+    /// Too many failed sign-ins; retry after the `Retry-After` seconds.
+    RateLimited,
+    /// The id is already taken.
+    Conflict,
+    TooLarge,
+    UnsupportedType,
+}
 
 impl ErrorCode {
     pub fn http_status(self) -> u16 {
         match self {
             ErrorCode::Auth => 401, ErrorCode::NotFound => 404, ErrorCode::BadRequest => 400, ErrorCode::UnsupportedVersion => 426,
             ErrorCode::NotImplemented => 501, ErrorCode::Network => 504, ErrorCode::Server => 502,
+            ErrorCode::Forbidden => 403, ErrorCode::RateLimited => 429, ErrorCode::Conflict => 409, ErrorCode::TooLarge => 413, ErrorCode::UnsupportedType => 415,
         }
     }
 }

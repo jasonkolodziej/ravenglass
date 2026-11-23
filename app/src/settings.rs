@@ -68,7 +68,11 @@ impl AppState {
             Some(theme) => self.theme = theme,
             None => problems.push(format!("config.toml: no theme named {wanted}")),
         }
-        self.shell.lock.set_policy(lock_policy(&self.shell.config), self.clock);
+        self.rearm_lock();
+        let policy = lock_policy(&self.shell.config);
+        if (policy.idle_secs > 0.0 || policy.lock_on_launch) && !self.shell.lock.armed() {
+            problems.push("the app lock is on in config.toml but nothing can open it · :lock passcode".into());
+        }
         let (workspaces, _) = workspaces_for(&self.shell.config, &self.shell.accounts);
         self.workspaces = workspaces;
         self.active = self.active.min(self.workspaces.len() - 1);

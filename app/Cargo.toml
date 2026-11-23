@@ -40,3 +40,53 @@ wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 js-sys.workspace = true
 web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Storage", "Location", "Navigator", "StorageManager"] }
+# argon2 (mail-auth) reaches getrandom 0.2 through rand_core; in a browser it needs Web Crypto.
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+# Installers, built with cargo-packager (packaging/README.md). Paths are relative to this file.
+# Build first (`cargo build --release -p ravenglass`), then `cargo packager -p ravenglass --release`.
+[package.metadata.packager]
+product-name = "Ravenglass"
+identifier = "io.github.jasonkolodziej.Ravenglass"   # placeholder until a domain is chosen: packaging/README.md
+publisher = "Ravenglass contributors"
+copyright = "Copyright © 2026 the Ravenglass contributors"
+homepage = "https://github.com/jasonkolodziej/ravenglass"
+authors = ["Ravenglass contributors"]
+category = "Productivity"
+description = "A character-grid mail client"
+long-description = "Ravenglass is a fast, keyboard-driven mail client drawn on a monospace character grid."
+license-file = "../LICENSE"
+out-dir = "../target/packager"
+binaries = [{ path = "ravenglass", main = true }]
+# The .icns comes from `iconutil` in the macOS release job; elsewhere that glob matches nothing.
+icons = ["../packaging/icons/*.icns", "../packaging/icons/hicolor/*/apps/ravenglass.png", "../packaging/icons/ravenglass.ico"]
+# No `deep-link-protocols`: on Windows it would overwrite HKLM\Software\Classes\mailto. mailto is
+# declared per platform instead (packaging/macos/Info.plist, packaging/linux/ravenglass.desktop,
+# packaging/windows/mail-client.wxs).
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"
+info-plist-path = "../packaging/macos/Info.plist"
+
+[package.metadata.packager.deb]
+desktop-template = "../packaging/linux/ravenglass.desktop"
+section = "mail"
+priority = "optional"
+# Linked: libc6. Loaded at run time: fontconfig, xkbcommon, Vulkan and a Vulkan driver, and
+# the Wayland and X11 client libraries (small, on every desktop).
+depends = [
+    "libc6", "libfontconfig1", "libxkbcommon0", "libvulkan1", "mesa-vulkan-drivers | vulkan-icd",
+    "libwayland-client0", "libxkbcommon-x11-0", "libx11-xcb1", "libxcursor1", "libxi6",
+]
+
+[package.metadata.packager.deb.files]
+"../LICENSE" = "usr/share/doc/ravenglass/copyright"
+"../packaging/icons/hicolor" = "usr/share/icons/hicolor"
+"../packaging/linux/io.github.jasonkolodziej.Ravenglass.metainfo.xml" = "usr/share/metainfo/io.github.jasonkolodziej.Ravenglass.metainfo.xml"
+
+[package.metadata.packager.appimage.files]
+"../packaging/icons/hicolor" = "usr/share/icons/hicolor"
+"../packaging/linux/io.github.jasonkolodziej.Ravenglass.metainfo.xml" = "usr/share/metainfo/io.github.jasonkolodziej.Ravenglass.metainfo.xml"
+
+[package.metadata.packager.wix]
+fragment-paths = ["../packaging/windows/mail-client.wxs"]
+component-group-refs = ["RavenglassMailClient"]

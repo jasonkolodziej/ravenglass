@@ -63,6 +63,11 @@ pub fn mark(name: &str, value: &str) {
     if root.get_attribute(&attr).as_deref() != Some(value) { let _ = root.set_attribute(&attr, value); }
 }
 
+/// Leave the app for another page in this tab (the Relay's OIDC sign-in, which comes back).
+pub fn navigate(url: &str) {
+    if let Some(window) = web_sys::window() { let _ = window.location().assign(url); }
+}
+
 /// Ask the browser not to evict this origin's storage under pressure (architecture §6).
 pub fn persist_storage() {
     let Some(manager) = web_sys::window().map(|w| w.navigator().storage()) else { return };

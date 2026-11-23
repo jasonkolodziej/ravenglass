@@ -71,6 +71,16 @@ web-sys = "0.3"
 # SQLite for wasm32-unknown-unknown (what rusqlite links there); `wasm-bindgen` gives it the
 # browser's clock and randomness.
 sqlite-wasm-rs = { version = "0.6", default-features = false, features = ["wasm-bindgen"] }
+# ravenglass-relay: per-user secrets (AES-256-GCM, HKDF-SHA256), outbound HTTP for OIDC and the image proxy.
+aes-gcm = "0.10"
+hkdf = "0.13"
+subtle = "2"
+url = "2"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+tokio-tungstenite = "0.29"
+futures-util = { version = "0.3", default-features = false }
 
 [patch.crates-io]
 # Required: apps that build Rune patch the same crates, from the same rev (see docs/reference/rune-core-README.md, "Depending on Rune").
@@ -86,6 +96,10 @@ accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "0ca07561
 # this patch once Rune handles the variants itself.
 [patch."https://github.com/anomalyco/rune"]
 rune-taffy = { path = "vendor/rune-taffy" }
+
+# Argon2 is deliberately slow; unoptimised it takes seconds per hash in debug builds and tests.
+[profile.dev.package.argon2]
+opt-level = 3
 
 [profile.perf]
 inherits = "release"
