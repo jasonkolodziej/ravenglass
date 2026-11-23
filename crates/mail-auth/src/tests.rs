@@ -19,7 +19,8 @@ fn known_providers_need_no_lookup() {
     let icloud = autoconfig::discover(" Me@iCloud.com ", &never).unwrap();
     assert_eq!(icloud.incoming, Incoming::Imap(Server::new("imap.mail.me.com", 993, Security::Tls)));
     assert_eq!((icloud.auth, icloud.username.as_str()), (AuthKind::Password, "Me@iCloud.com"));
-    assert!(matches!(autoconfig::discover("me@fastmail.com", &never).unwrap().incoming, Incoming::Jmap { .. }));
+    // Fastmail's JMAP refuses passwords, so a password account uses IMAP.
+    assert_eq!(autoconfig::discover("me@fastmail.com", &never).unwrap().incoming, Incoming::Imap(Server::new("imap.fastmail.com", 993, Security::Tls)));
 }
 
 #[test]

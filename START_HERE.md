@@ -7,10 +7,11 @@ Checked with Rust 1.99.1: by hand on Linux, and by CI (tests, lint, headless sna
 - **Engine side:** core types and state machines, the SQLite store with search, MIME parsing and the HTML sanitizer, the Blitz host, the engine (sync, push, actions with undo, reader, HTML tiles, drafts, outbox), IMAP + SMTP, JMAP, accounts and OAuth, the Relay over HTTP, themes and config. All have tests.
 - **App:** the grid UI on the engine: list, reader in text and HTML, compose (reply, reply all, forward, address completion, undo send), modes, `:` command line, palette, panes, workspaces, link hover and open with a phishing check. Real accounts from a profile on disk (`--profile`), `:account add`, settings from `config.toml`, user themes and import, `:colors`, the app lock. 129 app tests; one drives a real IMAP/SMTP account on GreenMail end to end.
 - **Blitz spike:** done, verdict go; read `spikes/blitz/REPORT.md`. Blitz and Rune link together only with `vendor/rune-taffy` (Rune's crate plus one match arm).
-- **Web:** every shared crate passes `cargo check --target wasm32-unknown-unknown`. Nothing has been linked or run in a browser.
+- **Web:** the app runs in headless Chromium against the Relay in both sign-in modes (`web/tests/e2e.mjs`, `.github/workflows/web.yml`). The engine runs on the page thread and the mail cache is in memory; moving them into Workers (and the cache onto OPFS) is next.
+- **Real servers:** IMAP, SMTP and JMAP pass against Dovecot and Stalwart (`.github/workflows/servers.yml`); eight bugs were found and fixed that way. `ravenglass-check` checks a real account read-only.
 - **Decisions taken without asking** are listed in `.github/plans/0001-ravenglass-build-decisions.md`.
 
-**Not verified anywhere:** the app in a real window on macOS or Windows; any real mail provider; JMAP against a real server; STARTTLS upgrades; the Relay's push socket; the OS keyring; OAuth against Google or Microsoft (no client id exists); autoconfig lookups over the network; the app in a real window with a keyboard (it was run under a virtual display and driven headlessly).
+**Not verified anywhere:** the app in a real window on macOS or Windows; any real mail provider (run `ravenglass-check` on yours); the web app in Firefox or Safari; the OS keyring; a real OIDC identity provider; OAuth against Google or Microsoft (no client id exists); autoconfig lookups over the network; the app in a real window with a keyboard (it was run under a virtual display and driven headlessly).
 
 **Packaging:** Linux `.deb` and AppImage built and run here; macOS, Windows, the Relay image and signing run only in `.github/workflows/release.yml` (see `packaging/README.md`).
 

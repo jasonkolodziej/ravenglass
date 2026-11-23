@@ -85,7 +85,7 @@ fn completing_a_browser_sign_in_stores_only_the_refresh_token() {
 #[test]
 fn a_jmap_account_gets_a_jmap_backend() {
     let (c, secrets) = connector(None);
-    let config = account("me@fastmail.com");
+    let config = AccountConfig { incoming: Incoming::Jmap { session_url: "https://api.fastmail.com/jmap/session".into() }, smtp: None, ..account("me@fastmail.com") };
     secrets.set(&config.id, SecretKind::Password, "app-password").unwrap();
     assert_eq!(c.connect(&config, 0.0).unwrap().backend.account(), &config.id);
 }

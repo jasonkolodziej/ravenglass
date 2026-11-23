@@ -5,8 +5,9 @@
 //! The native [`HttpTransport`] speaks both Relay modes: the shared token, or a users-mode
 //! session cookie with its CSRF token (`relay_proto::auth`).
 //!
-//! Not here yet (milestone W2): the `fetch` transport and the WebSocket behind
-//! [`MailBackend::idle`], which for now returns at once without events.
+//! In the browser, `web::WebTransport` uses `fetch` and `web::WebBackend` holds the `/v1/events`
+//! WebSocket for push. The native backend's [`MailBackend::idle`] still returns at once without
+//! events; native clients use the engine's poll instead.
 
 use mail_core::*;
 use relay_proto::*;

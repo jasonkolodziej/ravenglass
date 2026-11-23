@@ -33,8 +33,8 @@ the [Rune](https://github.com/anomalyco/rune) GPU UI framework. HTML email is re
 | `ravenglass-config` | Core | `config.toml`: strict parsing, defaults, validation |
 | `relay-proto` | Core | Relay API v1 types, routes and version negotiation |
 | `mail-store` | Adapters | SQLite schema v2, migrations, sync apply, body cache, journal, drafts, FTS5 search with operators |
-| `mail-imap` | Adapters | IMAP + SMTP for any standard host: password and XOAUTH2, CONDSTORE where offered, MOVE with fallbacks, IDLE. Tested against GreenMail |
-| `mail-jmap` | Adapters | JMAP Core + Mail. Tested against an in-process server only; no push |
+| `mail-imap` | Adapters | IMAP + SMTP for any standard host: password and XOAUTH2, CONDSTORE where offered, MOVE with fallbacks, IDLE. Tested against GreenMail, Dovecot and Stalwart |
+| `mail-jmap` | Adapters | JMAP Core + Mail, tested against Stalwart; no push yet |
 | `mail-auth` | Adapters | Account settings, autoconfig (built-in providers, ISPDB, guesses), OAuth2 with PKCE, keyring secrets |
 | `ravenglass-accounts` | Adapters | Settings + secrets to a connected backend; OAuth token refresh |
 | `mail-mock` | Adapters | Deterministic backend for tests and scenes |
@@ -43,11 +43,14 @@ the [Rune](https://github.com/anomalyco/rune) GPU UI framework. HTML email is re
 | `mail-blitz` | Engine | Blitz host: layout, RGBA tiles, deny-by-default images, link hit-testing, darken, render thread |
 | `ravenglass-engine` | Engine | Command/Event loop: sync, push and polling, optimistic actions with journal and undo, reader, HTML views, drafts, outbox, search; desktop runner thread |
 | `ravenglass-relay` | Relay | HTTP/WebSocket server in two modes: a shared token for one person, or `users` mode with password or OIDC sign-in, sessions, CSRF, per-user encrypted accounts and an SSRF-safe image proxy. See `docs/RELAY.md`. No Web Push yet |
-| `ravenglass` (`app/`) | App | Grid UI: list, reader (text and HTML), compose with undo send, modes, command line, palette, panes, workspaces; real accounts from a profile on disk, add-account flow, settings, user themes, app lock. `--demo` runs on sample mail |
+| `ravenglass-check` | Tool | Read-only check of a real account (settings, login, folders, sync, IDLE) whose output is safe to share; see `docs/CHECKING-ACCOUNTS.md` |
+| `ravenglass` (`app/`) | App | Desktop and web (`tools/web-build.sh`, behind the Relay). Grid UI: list, reader (text and HTML), compose with undo send, modes, command line, palette, panes, workspaces; real accounts from a profile on disk, add-account flow, settings, user themes, app lock. `--demo` runs on sample mail; `mailto:` links open drafts |
 
 ```sh
 cargo test --workspace                         # all crates
 RAVENGLASS_IMAP_TEST=1 cargo test -p mail-imap # IMAP/SMTP against GreenMail (needs Java; starts it itself)
+cargo run --release -p ravenglass-check -- you@example.com   # check a real account, read-only
+tools/web-build.sh --relay https://relay.example.org         # the web app into web/dist/
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -- --demo                            # the app on sample mail
 cargo run -- --profile /tmp/rg                 # a fresh profile: then `:account add you@example.com`

@@ -53,7 +53,9 @@ pub fn builtin(email: &str) -> Option<Settings> {
         "gmail.com" | "googlemail.com" => settings(imap_smtp("imap.gmail.com", "smtp.gmail.com", 465, Security::Tls), AuthKind::OAuth2(Provider::Google), true),
         "outlook.com" | "hotmail.com" | "live.com" | "msn.com" => settings(imap_smtp("outlook.office365.com", "smtp-mail.outlook.com", 587, Security::StartTls), AuthKind::OAuth2(Provider::Microsoft), true),
         "icloud.com" | "me.com" | "mac.com" => settings(imap_smtp("imap.mail.me.com", "smtp.mail.me.com", 587, Security::StartTls), AuthKind::Password, false),
-        "fastmail.com" | "fastmail.fm" => settings((Incoming::Jmap { session_url: "https://api.fastmail.com/jmap/session".into() }, None), AuthKind::Password, true),
+        // Fastmail's JMAP takes only API tokens or OAuth, not passwords; IMAP and SMTP take an app
+        // password, so that is what a new Fastmail account uses. Fastmail files sent mail itself.
+        "fastmail.com" | "fastmail.fm" => settings(imap_smtp("imap.fastmail.com", "smtp.fastmail.com", 465, Security::Tls), AuthKind::Password, true),
         "yahoo.com" | "ymail.com" => settings(imap_smtp("imap.mail.yahoo.com", "smtp.mail.yahoo.com", 465, Security::Tls), AuthKind::Password, false),
         _ => return None,
     })
