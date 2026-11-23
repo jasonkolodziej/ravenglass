@@ -301,3 +301,33 @@ fn the_compose_scenes_show_the_draft() {
     assert_eq!(draft(&new).draft.subject, "Gnomon sync");
     assert_eq!(new.state.ws().panes.leaves().len(), 2, "with no message open the draft takes the reader's pane");
 }
+
+#[test]
+fn forward_and_reply_all_start_from_the_message_and_gt_reaches_a_draft() {
+    let mut rt = runtime();
+    let subject = rt.state.selected().unwrap().subject.clone();
+    type_keys(&mut rt, "f");
+    settle(&mut rt);
+    let c = draft(&rt);
+    assert!(c.draft.to.is_empty() && c.draft.in_reply_to.is_none());
+    assert_eq!(c.draft.subject, format!("Fwd: {subject}"));
+    assert_eq!(c.field, Field::To, "a forward still needs its recipient");
+    assert!(c.body.text.contains("Forwarded message"));
+    assert!(text_in(&rt.elements(), "compose-title").contains("forward"));
+    // Back in NORMAL, `gt` walks list → message → draft → list.
+    press(&mut rt, Key::Escape);
+    press(&mut rt, Key::Escape);
+    assert_eq!(rt.state.focused_kind(), Kind::List);
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        type_keys(&mut rt, "gt");
+        seen.push(rt.state.focused_kind());
+    }
+    assert_eq!(seen, [Kind::Reader, Kind::Compose, Kind::List]);
+    assert_eq!(rt.state.mode, Mode::default(), "a tab switch does not start typing");
+    // `R` answers everyone; it is a second draft beside the forward.
+    type_keys(&mut rt, "R");
+    settle(&mut rt);
+    assert_eq!((rt.state.compose.drafts.len(), rt.state.compose.active), (2, 1));
+    assert!(draft(&rt).draft.in_reply_to.is_some() && !draft(&rt).draft.to.is_empty());
+}
