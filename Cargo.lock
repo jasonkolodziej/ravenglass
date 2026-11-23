@@ -2516,7 +2516,10 @@ dependencies = [
 name = "mail-jmap"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "mail-core",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]

@@ -4,8 +4,14 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Ravenglass JMAP backend (RFC 8620/8621). Not started."
+description = "Ravenglass JMAP backend (RFC 8620/8621) implementing MailBackend over a pluggable HTTPS transport."
+
+[features]
+# A blocking HTTPS transport for native builds.
+http = ["dep:ureq", "dep:base64"]
 
 [dependencies]
 mail-core = { path = "../mail-core" }
-
+serde_json.workspace = true
+ureq = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
