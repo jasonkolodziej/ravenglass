@@ -400,10 +400,11 @@ $A --script scripts/compose.json --video out/compose.mp4 --keys --pointer
 
 ---
 
-## 8. Open questions for Jason (ask before M2)
-Resolved: all Rust, OS-agnostic, Blitz for HTML, reference video identified (§0), name Ravenglass, app icon D · Braille (dark + light).
+## 8. Decisions from Jason
+Resolved earlier: all Rust, OS-agnostic, Blitz for HTML, reference video identified (§0), name Ravenglass, app icon D · Braille (dark + light).
 
-1. Which accounts first: iCloud, Gmail, Fastmail (JMAP would be better there), Outlook?
-2. Default for HTML in dark mode: original colours on a light card (proposed), or darken by default?
-3. HTML vs text as the default reader view: the grid look favours text, while Blitz gives fidelity. Per-user setting either way; which ships as default?
-4. Biometric app lock (Touch ID / Windows Hello): v1 or later?
+Resolved 2026-11-23:
+1. **Accounts:** any modern provider, custom hosts included. Generic IMAP/SMTP with autoconfig first, then JMAP and OAuth for Gmail and Outlook.
+2. **HTML in dark mode:** both modes ship (original colours on a light card, and darkened), as a setting. The light card stays the default.
+3. **Default reader view:** HTML.
+4. **Biometric app lock (Touch ID / Windows Hello):** v1. This overrides "Explicitly later" in §1.

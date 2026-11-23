@@ -39,5 +39,5 @@ Compare the snapshots with `brand/preview/ui-wallpaper-night.png` and `ui-wallpa
 - The reference IDE: see `docs/reference/LINKS.md`. Use it for look and feel only (it's GPL-3 Go; copy no code).
 - The design canvas with the icon, UI and palette: <https://claude.ai/artifact/CN6owMxyqWSZMnppPBQTX8> (Jason's; ask for access if you need it).
 
-## 4. Open questions for Jason (plan §8)
-Accounts to support first · HTML in dark mode · HTML vs text as the default reader view · biometric lock in v1 or later.
+## 4. Decisions (plan §8)
+Any modern provider including custom hosts · HTML is the default reader view · both dark-mode HTML treatments ship as a setting · biometric lock is in v1.

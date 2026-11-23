@@ -445,7 +445,7 @@ v1 has 25 features, all on desktop and web unless the Web column says otherwise;
 | Unified inbox and smart mailboxes | v1.x | `mail-store` views | Yes |
 | Snooze and send later | v1.x | engine timers, Relay scheduler on web | Relay |
 | Rules and filters (local, Sieve where offered) | v1.x | engine | Yes |
-| Biometric lock (Touch ID, Windows Hello, passkey) | v1.x | platform layer | Passkey |
+| Biometric lock (Touch ID, Windows Hello, passkey) | v1 | platform layer | Passkey |
 | Calendar invites (accept, decline) | Later | new `mail-ical` | — |
 | S/MIME and OpenPGP | Later | new `mail-crypto` | — |
 | Gmail API and Microsoft Graph backends | Later | new backends | — |
@@ -640,10 +640,15 @@ Desktop v1 comes first (M0–M9). The web build starts once search and the store
 
 ### Open questions
 
-- [ ] Which providers ship first: Gmail, Microsoft 365, iCloud, Fastmail?
-- [ ] Default reader view: HTML (fidelity) or text (fits the grid look)? It is a per-user setting either way.
-- [ ] HTML in dark themes: original colours on a paper card (proposed) or darkened by default?
-- [ ] Biometric or passkey lock in v1 or v1.x?
+Decided by Jason on 2026-11-23:
+
+- [x] Providers: any modern provider, custom hosts included. Generic IMAP/SMTP with autoconfig comes first because it reaches all of them; JMAP and OAuth (Gmail, Microsoft 365) follow in the same milestone.
+- [x] Default reader view: HTML. Text stays one key away (`t`) and is the fallback.
+- [x] HTML in dark themes: both modes ship, paper card and darkened, switched with `html_dark`. Paper stays the default until Jason says otherwise.
+- [x] Biometric or passkey lock: v1.
+
+Still open:
+
 - [ ] Who hosts the web app and Relay at launch: self-host only, or an official instance?
 
 ## 17. Appendices
