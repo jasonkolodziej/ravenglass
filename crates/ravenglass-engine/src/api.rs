@@ -96,6 +96,9 @@ pub enum Event {
     LinkHover { view: ViewId, link: Option<Link> },
     /// Show the text view for this message instead ("Simplified view").
     HtmlFailed { view: ViewId, failure: Failure },
+    /// The account is idle: watch this folder for pushes and answer each with
+    /// [`Command::Refresh`]. The desktop runner does this itself and does not pass it on.
+    Watch { account: AccountId, folder: FolderId },
     /// Call back with [`Command::Tick`] at this time (seconds, the caller's clock).
     WakeAt(f64),
     /// One line for the status bar. Never contains message content or addresses.

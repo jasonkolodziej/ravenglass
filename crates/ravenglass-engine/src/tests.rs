@@ -89,7 +89,8 @@ fn open_account_syncs_every_folder_inbox_first_and_reports_counts() {
     let states: Vec<_> = events.iter().filter_map(|e| match e { Event::SyncState { state, .. } => Some(state.clone()), _ => None }).collect();
     assert_eq!(states.first(), Some(&account_sync::State::Connecting { attempt: 0 }));
     assert_eq!(states.last(), Some(&account_sync::State::Idle));
-    let Some(Event::FolderList { folders, .. }) = events.last() else { panic!("{events:?}") };
+    let Some(folders) = events.iter().rev().find_map(|e| match e { Event::FolderList { folders, .. } => Some(folders), _ => None }) else { panic!("{events:?}") };
+    assert!(events.contains(&Event::Watch { account: rig.account.clone(), folder: rig.inbox() }), "an idle account asks for its Inbox to be watched");
     assert_eq!(folders.iter().map(|f| f.total).sum::<u32>(), 60);
     assert_eq!(rig.page().len(), 10);
     // A second pass finds nothing new and settles again.
@@ -359,4 +360,54 @@ fn drafts_need_a_recipient_survive_a_restart_and_can_be_discarded() {
     assert_eq!(loaded, [Event::Draft(draft)]);
     assert_eq!(block_on(restarted.handle(Command::DiscardDraft(id.clone()), 0.0)), [Event::DraftClosed { id, outbox: None }]);
     assert!(block_on(restarted.handle(Command::LoadDrafts, 0.0)).is_empty());
+}
+
+/// A mock account that pushes "new mail" once, the first time its Inbox is watched.
+struct Pushy { inner: MockBackend, pushed: AtomicBool, syncs: std::sync::atomic::AtomicU32 }
+
+impl MailBackend for Pushy {
+    fn account(&self) -> &AccountId { self.inner.account() }
+    fn list_folders(&self) -> BoxFut<'_, Result<Vec<Folder>>> { self.inner.list_folders() }
+    fn sync_folder<'a>(&'a self, folder: &'a FolderId, since: &'a SyncToken) -> BoxFut<'a, Result<FolderDelta>> {
+        if folder.0.ends_with("/Inbox") { self.syncs.fetch_add(1, Ordering::SeqCst); }
+        self.inner.sync_folder(folder, since)
+    }
+    fn fetch_body<'a>(&'a self, msg: &'a MessageId) -> BoxFut<'a, Result<RawMessage>> { self.inner.fetch_body(msg) }
+    fn set_flags<'a>(&'a self, msgs: &'a [MessageId], add: Flags, remove: Flags) -> BoxFut<'a, Result<()>> { self.inner.set_flags(msgs, add, remove) }
+    fn move_to<'a>(&'a self, msgs: &'a [MessageId], to: &'a FolderId) -> BoxFut<'a, Result<()>> { self.inner.move_to(msgs, to) }
+    fn append_draft<'a>(&'a self, raw: &'a [u8]) -> BoxFut<'a, Result<MessageId>> { self.inner.append_draft(raw) }
+    fn send<'a>(&'a self, raw: &'a [u8], from: &'a Address, rcpt: &'a [Address]) -> BoxFut<'a, Result<()>> { self.inner.send(raw, from, rcpt) }
+    fn idle<'a>(&'a self, folder: &'a FolderId, events: Sender<IdleEvent>) -> BoxFut<'a, Result<()>> {
+        Box::pin(async move {
+            if !self.pushed.swap(true, Ordering::SeqCst) { let _ = events.send(IdleEvent::Exists(folder.clone())); }
+            Ok(())
+        })
+    }
+}
+
+#[test]
+fn a_push_from_the_server_triggers_a_sync_without_any_command() {
+    let backend = Arc::new(Pushy { inner: MockBackend::new("iCloud", 46, 20), pushed: AtomicBool::new(false), syncs: 0.into() });
+    let mut engine = Engine::new(Store::open_in_memory().unwrap(), Config::default());
+    engine.add_backend(backend.clone());
+    let handle = runner::spawn(engine, || {}).unwrap();
+    assert!(handle.send(Command::OpenAccount(AccountId::from("iCloud"))));
+    let mut idles = 0;
+    while idles < 2 {
+        let event = handle.events.recv_timeout(std::time::Duration::from_secs(10)).expect("the push starts a second sync pass");
+        assert!(!matches!(event, Event::Watch { .. } | Event::WakeAt(_)), "runner-only events stay in the runner");
+        if matches!(event, Event::SyncState { state: account_sync::State::Idle, .. }) { idles += 1; }
+    }
+    handle.shutdown();
+    assert_eq!(backend.syncs.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn an_idle_account_polls_its_other_folders_on_a_timer() {
+    let mut rig = Rig::synced();
+    assert!(rig.run(Command::Tick).is_empty(), "not yet due");
+    rig.now += POLL_SECS;
+    let events = rig.run(Command::Tick);
+    assert!(events.contains(&Event::SyncState { account: rig.account.clone(), state: account_sync::State::Idle }), "{events:?}");
+    assert!(events.contains(&Event::WakeAt(rig.now + POLL_SECS)));
 }

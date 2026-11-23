@@ -13,6 +13,8 @@ use std::sync::Arc;
 
 /// Envelopes per page (architecture §13).
 pub const PAGE: u32 = 200;
+/// Folders without push are checked this often while an account is idle.
+pub const POLL_SECS: f64 = 300.0;
 /// Past actions that can still be undone.
 const UNDO_DEPTH: usize = 50;
 
@@ -34,6 +36,8 @@ pub(crate) struct Account {
     /// Folders still to sync in this pass, Inbox first.
     queue: VecDeque<FolderId>,
     total: u32,
+    /// When an idle account next checks the folders that have no push.
+    next_poll: f64,
 }
 
 struct Outgoing { account: AccountId, raw: Vec<u8>, from: Address, rcpt: Vec<Address>, state: outbox::State }
@@ -63,7 +67,7 @@ impl Engine {
 
     pub fn add_backend(&mut self, backend: Arc<dyn MailBackend>) {
         let identity = Address { name: None, email: backend.account().0.clone() };
-        let account = Account { backend: backend.clone(), identity, sync: account_sync::State::Disconnected, queue: VecDeque::new(), total: 0 };
+        let account = Account { backend: backend.clone(), identity, sync: account_sync::State::Disconnected, queue: VecDeque::new(), total: 0, next_poll: f64::INFINITY };
         self.accounts.insert(backend.account().clone(), account);
     }
 
@@ -75,6 +79,8 @@ impl Engine {
     /// Give the engine a render thread. Without one, `RenderHtml` answers `HtmlFailed` and the
     /// reader shows the text view.
     pub fn set_renderer(&mut self, renderer: mail_blitz::Renderer) { self.html.renderer = Some(renderer); }
+
+    pub fn backend(&self, account: &AccountId) -> Option<Arc<dyn MailBackend>> { self.accounts.get(account).map(|a| a.backend.clone()) }
 
     pub fn store(&self) -> &Store { &self.store }
 
@@ -161,7 +167,11 @@ impl Engine {
             Command::CloseHtml(view) => { self.html.close(view); Ok(()) }
             Command::Tick => {
                 let accounts: Vec<AccountId> = self.accounts.keys().cloned().collect();
-                for account in accounts { self.sync_event(&account, account_sync::Event::Timer(now), now, out).await?; }
+                for account in accounts {
+                    let due = self.accounts.get(&account).is_some_and(|a| a.sync == account_sync::State::Idle && now >= a.next_poll);
+                    let event = if due { account_sync::Event::IdleWoke } else { account_sync::Event::Timer(now) };
+                    self.sync_event(&account, event, now, out).await?;
+                }
                 let queued: Vec<OutboxId> = self.outbox.keys().copied().collect();
                 for id in queued { self.outbox_event(id, outbox::Event::Timer(now), out).await?; }
                 self.draft_timers(now, out).await;
@@ -181,7 +191,7 @@ impl Engine {
             let effects = account_sync::step(&mut account.sync, event, now);
             if account.sync != before { out.push(Event::SyncState { account: id.clone(), state: account.sync.clone() }); }
             for effect in effects {
-                match self.sync_effect(id, effect, out).await {
+                match self.sync_effect(id, effect, now, out).await {
                     Ok(Some(next)) => events.push_back(next),
                     Ok(None) => {}
                     Err(e) => {
@@ -195,7 +205,7 @@ impl Engine {
         Ok(())
     }
 
-    async fn sync_effect(&mut self, id: &AccountId, effect: Effect, out: &mut Events) -> mail_core::Result<Option<account_sync::Event>> {
+    async fn sync_effect(&mut self, id: &AccountId, effect: Effect, now: f64, out: &mut Events) -> mail_core::Result<Option<account_sync::Event>> {
         let account = self.accounts.get_mut(id).ok_or_else(|| MailError::NotFound("account".into()))?;
         let backend = account.backend.clone();
         Ok(match effect {
@@ -221,8 +231,13 @@ impl Engine {
                 Some(account_sync::Event::FolderSynced { total })
             }
             Effect::StartIdle => {
+                account.next_poll = now + POLL_SECS;
                 self.replay_journal(id, out).await;
                 self.push_folders(id, out);
+                if let Some(inbox) = self.store.folders(id).map_err(store_error)?.into_iter().find(|f| f.role == FolderRole::Inbox) {
+                    out.push(Event::Watch { account: id.clone(), folder: inbox.id });
+                }
+                out.push(Event::WakeAt(now + POLL_SECS));
                 None
             }
             Effect::WakeAt(t) => { out.push(Event::WakeAt(t)); None }

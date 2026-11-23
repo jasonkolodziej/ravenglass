@@ -9,8 +9,7 @@
 //! [`Renderer`] handle and one `HtmlView` state machine per reader pane.
 //!
 //! Not here yet: rich-text drafts and deleting a sent draft's server copy, fetching remote images the user allowed (until
-//! then they stay placeholders), server search for mail outside the cache, and the IDLE
-//! subscription that turns pushes into [`Command::Refresh`].
+//! then they stay placeholders), and server search for mail outside the cache.
 
 pub mod api;
 mod drafts;
@@ -25,4 +24,4 @@ mod tests;
 pub use api::{BodyView, Command, DraftSource, Event, OpId, OutboxId, ReaderView, ViewId};
 pub use mail_render::compose::ReplyKind;
 pub use mail_blitz::{DarkMode, Failure as HtmlFailure, Info as HtmlInfo, Link, Options as HtmlOptions, Renderer, Tile};
-pub use engine::{Config, Engine, PAGE};
+pub use engine::{Config, Engine, PAGE, POLL_SECS};
