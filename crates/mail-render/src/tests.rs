@@ -98,6 +98,8 @@ fn placeholders_stand_in_for_remote_images_only() {
     let held = placeholders(&out.html);
     assert!(!held.contains("cdn.example") && held.contains("width:552px;height:180px;") && held.contains(">Blitz 0.3</span>"), "{held}");
     assert!(held.contains("cid://acc/1/logo") && held.contains("data:image/png"), "{held}");
+    let twice = clean(r#"<img src="https://cdn.example/a.png?x=1&amp;y=2"><img src="https://cdn.example/a.png?x=1&amp;y=2"><img src="cid:logo"><style>.a{}</style><img src="http://b.example/b.gif" width="40" height="40">"#);
+    assert_eq!(remote_images(&twice.html), ["https://cdn.example/a.png?x=1&y=2", "http://b.example/b.gif"]);
 }
 
 #[test]

@@ -4,7 +4,6 @@
 use crate::api::{Event, ViewId};
 use mail_blitz::{Failure, Images, Info, Options, Renderer};
 use mail_core::machine::html_view::{self, Effect, State};
-use mail_render::InlinePart;
 use std::collections::BTreeMap;
 
 #[derive(Default)]
@@ -15,14 +14,13 @@ pub(crate) struct Html {
 
 impl Html {
     /// `html` is the sanitized body, or `None` for a message without an HTML part.
-    pub fn open(&mut self, view: ViewId, html: Option<String>, inline: Vec<InlinePart>, options: Options, out: &mut Vec<Event>) {
+    pub fn open(&mut self, view: ViewId, html: Option<String>, images: Images, options: Options, out: &mut Vec<Event>) {
         let (Some(renderer), Some(html)) = (&self.renderer, html) else {
             self.views.remove(&view);
             return out.push(Event::HtmlFailed { view, failure: Failure::Empty });
         };
         self.views.insert(view, html_view::open(options.width));
-        // Remote images are not fetched yet, so none are passed and they show as placeholders.
-        let opened = renderer.open(view.0, html, Images { inline, ..Default::default() }, options);
+        let opened = renderer.open(view.0, html, images, options);
         self.laid_out(view, opened, out);
     }
 

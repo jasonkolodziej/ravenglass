@@ -200,3 +200,21 @@ pub fn placeholders(html: &str) -> String {
     out.push_str(rest);
     out
 }
+
+/// The remote image URLs in sanitized HTML, each once, in document order.
+pub fn remote_images(html: &str) -> Vec<String> {
+    let mut urls: Vec<String> = Vec::new();
+    let mut rest = html;
+    while let Some(lt) = rest.find('<') {
+        rest = &rest[lt..];
+        let (tag, after) = rest.split_at(tag_end(rest));
+        rest = after;
+        if tag.starts_with("<style") { rest = rest.find("</style>").map_or("", |i| &rest[i..]); continue; }
+        if !tag.starts_with("<img") { continue; }
+        let Some((_, src)) = attributes(tag).into_iter().find(|(n, _)| *n == "src") else { continue };
+        let url = src.trim().replace("&amp;", "&").replace("&quot;", "\"");
+        let lower = url.to_ascii_lowercase();
+        if (lower.starts_with("http://") || lower.starts_with("https://")) && !urls.contains(&url) { urls.push(url); }
+    }
+    urls
+}

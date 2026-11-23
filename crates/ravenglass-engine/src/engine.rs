@@ -54,7 +54,18 @@ pub struct Engine {
     outbox: BTreeMap<OutboxId, Outgoing>,
     next_outbox: u64,
     history: BTreeMap<OpId, Done>,
+    /// Fetches one remote image the user allowed; `None` if it cannot be had.
+    images: Option<ImageFetcher>,
+    /// Messages whose images were allowed for this session only.
+    allowed_once: std::collections::BTreeSet<MessageId>,
+    /// What each HTML view shows, to render it again when its images are allowed.
+    shown: BTreeMap<ViewId, (MessageId, mail_blitz::Options)>,
 }
+
+/// Fetch one image by URL. It must send no cookies and no referrer, and bound its own time.
+pub type ImageFetcher = Arc<dyn Fn(&str) -> Option<Vec<u8>> + Send + Sync>;
+/// Remote images fetched for one message at most.
+const MAX_REMOTE_IMAGES: usize = 40;
 
 pub(crate) type Events = Vec<Event>;
 /// A command step; the error text becomes an [`Event::Error`].
@@ -62,7 +73,7 @@ pub(crate) type Outcome<T = ()> = std::result::Result<T, String>;
 
 impl Engine {
     pub fn new(store: Store, config: Config) -> Self {
-        Self { html: crate::html::Html::default(), drafts: crate::drafts::Drafts::default(), store, config, accounts: BTreeMap::new(), outbox: BTreeMap::new(), next_outbox: 1, history: BTreeMap::new() }
+        Self { html: crate::html::Html::default(), drafts: crate::drafts::Drafts::default(), store, config, accounts: BTreeMap::new(), outbox: BTreeMap::new(), next_outbox: 1, history: BTreeMap::new(), images: None, allowed_once: Default::default(), shown: BTreeMap::new() }
     }
 
     pub fn add_backend(&mut self, backend: Arc<dyn MailBackend>) {
@@ -75,6 +86,9 @@ impl Engine {
     pub fn set_identity(&mut self, account: &AccountId, identity: Address) {
         if let Some(a) = self.accounts.get_mut(account) { a.identity = identity; }
     }
+
+    /// How allowed remote images are fetched. Without it they stay placeholders.
+    pub fn set_image_fetcher(&mut self, fetcher: ImageFetcher) { self.images = Some(fetcher); }
 
     /// Give the engine a render thread. Without one, `RenderHtml` answers `HtmlFailed` and the
     /// reader shows the text view.
@@ -141,12 +155,16 @@ impl Engine {
             Command::CancelSend(id) => self.outbox_event(id, outbox::Event::Undo, out).await,
             Command::RetrySend(id) => self.outbox_event(id, outbox::Event::Retry, out).await,
             Command::AllowImages { message, scope } => {
+                self.allowed_once.insert(message.clone());
                 if scope == image_load::Scope::Sender
                     && let Some(envelope) = self.store.envelope(&message).map_err(text)?
                 {
                     self.store.allow_images_from(&envelope.from.email).map_err(text)?;
                 }
-                out.push(Event::ImagesAllowed { message });
+                out.push(Event::ImagesAllowed { message: message.clone() });
+                // Views already showing the message are laid out again, now with its images.
+                let showing: Vec<(ViewId, mail_blitz::Options)> = self.shown.iter().filter(|(_, (m, _))| *m == message).map(|(v, (_, o))| (*v, o.clone())).collect();
+                for (view, options) in showing { self.render_html(view, message.clone(), options, out).await?; }
                 Ok(())
             }
             Command::CompleteAddress { prefix, limit } => {
@@ -154,17 +172,11 @@ impl Engine {
                 out.push(Event::Addresses { prefix, addresses });
                 Ok(())
             }
-            Command::RenderHtml { view, message, options } => {
-                let raw = self.raw(&message).await?;
-                let parsed = mail_render::parse(&raw.bytes).map_err(text)?;
-                let html = parsed.html.as_deref().map(|h| mail_render::sanitize(h, &message).html);
-                self.html.open(view, html, parsed.inline, options, out);
-                Ok(())
-            }
+            Command::RenderHtml { view, message, options } => self.render_html(view, message, options, out).await,
             Command::ResizeHtml { view, width } => { self.html.resize(view, width, out); Ok(()) }
             Command::HtmlTile { view, index } => { self.html.tile(view, index, out); Ok(()) }
             Command::HtmlPointer { view, x, y } => { self.html.pointer(view, x, y, out); Ok(()) }
-            Command::CloseHtml(view) => { self.html.close(view); Ok(()) }
+            Command::CloseHtml(view) => { self.shown.remove(&view); self.html.close(view); Ok(()) }
             Command::Tick => {
                 let accounts: Vec<AccountId> = self.accounts.keys().cloned().collect();
                 for account in accounts {
@@ -338,6 +350,25 @@ impl Engine {
     }
 
     // ── reader ─────────────────────────────────────────────────────────────────────────────
+
+    async fn render_html(&mut self, view: ViewId, message: MessageId, options: mail_blitz::Options, out: &mut Events) -> Outcome {
+        let raw = self.raw(&message).await?;
+        let parsed = mail_render::parse(&raw.bytes).map_err(text)?;
+        let html = parsed.html.as_deref().map(|h| mail_render::sanitize(h, &message).html);
+        let sender_allowed = match &parsed.from { Some(from) => self.store.images_allowed_from(&from.email).map_err(text)?, None => false };
+        let mut remote = std::collections::HashMap::new();
+        if let (true, Some(fetch), Some(html)) = (sender_allowed || self.allowed_once.contains(&message), &self.images, &html) {
+            let mut budget = mail_blitz::MAX_MESSAGE_IMAGE_BYTES;
+            for url in mail_render::remote_images(html).into_iter().take(MAX_REMOTE_IMAGES) {
+                let Some(bytes) = fetch(&url).filter(|b| b.len() <= mail_blitz::MAX_IMAGE_BYTES.min(budget)) else { continue };
+                budget -= bytes.len();
+                remote.insert(url, bytes);
+            }
+        }
+        self.shown.insert(view, (message, options.clone()));
+        self.html.open(view, html, mail_blitz::Images { inline: parsed.inline, remote }, options, out);
+        Ok(())
+    }
 
     /// A message's raw bytes: from the cache, else from the server.
     pub(crate) async fn raw(&mut self, id: &MessageId) -> Outcome<RawMessage> {

@@ -411,3 +411,25 @@ fn an_idle_account_polls_its_other_folders_on_a_timer() {
     assert!(events.contains(&Event::SyncState { account: rig.account.clone(), state: account_sync::State::Idle }), "{events:?}");
     assert!(events.contains(&Event::WakeAt(rig.now + POLL_SECS)));
 }
+
+#[test]
+fn remote_images_load_only_after_the_user_allows_them() {
+    use std::sync::Mutex;
+    let mut engine = Engine::new(Store::open_in_memory().unwrap(), Config::default());
+    engine.add_backend(Arc::new(WithHtml(MockBackend::new("iCloud", 46, 20))));
+    engine.set_renderer(Renderer::spawn().unwrap());
+    let asked: Arc<Mutex<Vec<String>>> = Arc::default();
+    engine.set_image_fetcher({ let asked = asked.clone(); Arc::new(move |url: &str| { asked.lock().unwrap().push(url.to_owned()); None }) });
+    let run = |engine: &mut Engine, cmd| block_on(engine.handle(cmd, 0.0));
+    run(&mut engine, Command::OpenAccount(AccountId::from("iCloud")));
+    let (view, message) = (ViewId(1), MessageId::from("iCloud/00000"));
+    let render = Command::RenderHtml { view, message: message.clone(), options: HtmlOptions::default() };
+
+    run(&mut engine, render.clone());
+    assert!(asked.lock().unwrap().is_empty(), "nothing is fetched for a blocked message");
+    let allowed = run(&mut engine, Command::AllowImages { message: message.clone(), scope: mail_core::machine::image_load::Scope::Once });
+    assert!(matches!(allowed.as_slice(), [Event::ImagesAllowed { .. }, Event::HtmlLaidOut { .. }]), "the open view is laid out again: {allowed:?}");
+    assert_eq!(*asked.lock().unwrap(), ["https://cdn.example.com/hero.png"], "the hero image, never the tracking pixel");
+    run(&mut engine, Command::CloseHtml(view));
+    assert_eq!(run(&mut engine, Command::AllowImages { message, scope: mail_core::machine::image_load::Scope::Once }).len(), 1, "a closed view is not rendered");
+}

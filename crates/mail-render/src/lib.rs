@@ -13,7 +13,7 @@ mod text;
 mod tests;
 
 pub use html_text::html_to_text;
-pub use sanitize::{SanitizedHtml, placeholders, sanitize};
+pub use sanitize::{SanitizedHtml, placeholders, remote_images, sanitize};
 pub use text::{Line, QUOTE_FOLD_AFTER, Span, TextBody};
 
 use mail_core::{Address, Attachment, MessageId, Timestamp};

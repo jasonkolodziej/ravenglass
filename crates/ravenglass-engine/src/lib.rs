@@ -8,12 +8,15 @@
 //! HTML mail is laid out and painted by `mail-blitz` on its render thread; the engine holds the
 //! [`Renderer`] handle and one `HtmlView` state machine per reader pane.
 //!
-//! Not here yet: rich-text drafts and deleting a sent draft's server copy, fetching remote images the user allowed (until
-//! then they stay placeholders), and server search for mail outside the cache.
+//! Not here yet: rich-text drafts, deleting a sent draft's server copy, and server search for
+//! mail outside the cache. Allowed remote images are fetched on the engine thread, one after
+//! another, so a slow image host delays other commands for up to its timeout.
 
 pub mod api;
 mod drafts;
 mod engine;
+#[cfg(feature = "http")]
+pub mod fetch;
 mod html;
 mod ops;
 #[cfg(not(target_arch = "wasm32"))]
@@ -24,4 +27,4 @@ mod tests;
 pub use api::{BodyView, Command, DraftSource, Event, OpId, OutboxId, ReaderView, ViewId};
 pub use mail_render::compose::ReplyKind;
 pub use mail_blitz::{DarkMode, Failure as HtmlFailure, Info as HtmlInfo, Link, Options as HtmlOptions, Renderer, Tile};
-pub use engine::{Config, Engine, PAGE, POLL_SECS};
+pub use engine::{Config, Engine, ImageFetcher, PAGE, POLL_SECS};

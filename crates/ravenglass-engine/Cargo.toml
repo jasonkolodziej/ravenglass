@@ -6,7 +6,12 @@ license.workspace = true
 publish.workspace = true
 description = "Ravenglass engine: the Command/Event boundary over backends, the store, the outbox and rendering. No UI types."
 
+[features]
+# `fetch::https_images`: a blocking image fetcher for native builds.
+http = ["dep:ureq"]
+
 [dependencies]
+ureq = { workspace = true, optional = true }
 mail-core = { path = "../mail-core" }
 mail-store = { path = "../mail-store" }
 mail-render = { path = "../mail-render" }
