@@ -9,4 +9,5 @@ description = "Ravenglass user configuration (config.toml): strict parsing, defa
 [dependencies]
 serde.workspace = true
 toml.workspace = true
+toml_edit.workspace = true
 thiserror.workspace = true

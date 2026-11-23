@@ -128,5 +128,26 @@ impl Config {
     pub fn to_toml(&self) -> String { toml::to_string(self).unwrap_or_default() }
 }
 
+/// `src` (the text of `config.toml`, maybe empty) with `[ui].theme` set to `theme`, and nothing
+/// else changed: comments, order, spacing and the comment after the old value are kept. The
+/// result must still parse, so a file that is already broken is refused rather than rewritten.
+pub fn with_theme(src: &str, theme: &str) -> Result<String, ConfigError> {
+    Config::parse(src)?;
+    let mut doc: toml_edit::DocumentMut = src.parse().map_err(|e: toml_edit::TomlError| ConfigError::Invalid(e.message().to_owned()))?;
+    let ui = doc.entry("ui").or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()));
+    let Some(ui) = ui.as_table_like_mut() else { return Err(ConfigError::Invalid("ui is not a table".into())) };
+    match ui.get_mut("theme").and_then(toml_edit::Item::as_value_mut) {
+        Some(old) => {
+            let decor = old.decor().clone();
+            *old = toml_edit::Value::from(theme);
+            *old.decor_mut() = decor;
+        }
+        None => { ui.insert("theme", toml_edit::value(theme)); }
+    }
+    let out = doc.to_string();
+    Config::parse(&out)?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests;

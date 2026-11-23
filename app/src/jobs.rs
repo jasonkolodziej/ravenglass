@@ -37,6 +37,8 @@ pub enum Job {
     ClearPasscode,
     ImportTheme { path: String, base: String, known: Vec<Theme> },
     SaveTheme { theme: Box<Theme> },
+    /// Keep the theme now on screen as `[ui].theme` in `config.toml`; `turn` orders the writes.
+    RememberTheme { theme: String, turn: u64 },
     Reload,
 }
 
@@ -53,6 +55,7 @@ pub enum JobDone {
     PasscodeSaved(Result<bool, String>),
     ThemeImported(Result<Box<Theme>, String>),
     ThemeSaved(Result<Box<Theme>, String>),
+    ThemeRemembered(Result<(), String>),
     Reloaded(Box<Loaded>),
     /// The engine was built: accounts without a backend, and the guard of the token refresher.
     Connected { problems: Vec<(AccountId, String)>, tokens: Option<Sender<()>> },
@@ -114,6 +117,9 @@ pub fn run(job: Job, ctx: &Ctx, emit: &mut dyn FnMut(JobDone)) {
                 None => Err("the demo has no profile to save themes in".into()),
             };
             emit(JobDone::ThemeSaved(saved));
+        }
+        Job::RememberTheme { theme, turn } => {
+            if let Some(profile) = &ctx.profile { emit(JobDone::ThemeRemembered(profile.remember_theme(&theme, turn))); }
         }
         Job::Reload => emit(JobDone::Reloaded(Box::new(ctx.profile.as_ref().map(Profile::load).unwrap_or_default()))),
     }

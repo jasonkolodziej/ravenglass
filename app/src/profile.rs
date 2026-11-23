@@ -240,6 +240,25 @@ impl Profile {
         write_private(&self.accounts_file(), &accounts_to_toml(accounts)?)
     }
 
+    /// Set `[ui].theme` in `config.toml` to `theme`, leaving the rest of the file as the user
+    /// wrote it (`ravenglass_config::with_theme`). A file that does not parse is left alone.
+    /// `turn` orders the writes: one older than a write already made is dropped, so two quick
+    /// `:theme` commands on two job threads cannot leave the first one on disk.
+    pub fn remember_theme(&self, theme: &str, turn: u64) -> Result<(), String> {
+        static WRITTEN: std::sync::Mutex<Vec<(PathBuf, u64)>> = std::sync::Mutex::new(Vec::new());
+        let path = self.config_file();
+        let mut written = WRITTEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let last = written.iter().find(|(p, _)| *p == path).map_or(0, |(_, t)| *t);
+        if turn < last { return Ok(()); }
+        let src = read_capped(&path)?.unwrap_or_default();
+        let out = ravenglass_config::with_theme(&src, theme).map_err(|e| e.to_string())?;
+        self.ensure_dirs()?;
+        if out != src { write_private(&path, &out)?; }
+        written.retain(|(p, _)| *p != path);
+        written.push((path, turn));
+        Ok(())
+    }
+
     /// Write `themes/<id>.toml`. The id is a slug, so the file cannot land outside the folder.
     pub fn save_theme(&self, id: &str, toml: &str) -> Result<PathBuf, String> {
         let id = slug(id);

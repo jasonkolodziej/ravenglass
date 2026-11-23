@@ -94,7 +94,7 @@ impl AppState {
     }
 
     /// `:theme <name>`. `system` follows the OS appearance with the config's light and dark
-    /// choices. The choice lasts for this run; `config.toml` is the user's to edit.
+    /// choices. The choice is written to `config.toml` as `[ui].theme` (see [`Self::remember_theme`]).
     pub fn switch_theme(&mut self, name: &str) {
         let name = name.trim();
         if name.eq_ignore_ascii_case("system") {
@@ -104,6 +104,7 @@ impl AppState {
                 Some(theme) => {
                     self.toast(format!("theme: system ({})", theme.name));
                     self.show_theme(theme);
+                    self.remember_theme();
                 }
                 None => self.error(format!("no theme named {wanted}")),
             };
@@ -113,6 +114,7 @@ impl AppState {
                 self.shell.config.ui.theme = theme.id.clone();
                 self.toast(format!("theme: {}", theme.name));
                 self.show_theme(theme);
+                self.remember_theme();
             }
             None => self.error(format!("no theme named {name}")),
         }
@@ -129,13 +131,28 @@ impl AppState {
         }
     }
 
-    /// A theme that was just imported, saved or fixed: keep it among the user's and show it.
+    /// A theme that was just imported or saved (so it is on disk): keep it among the user's,
+    /// show it and make it the one `config.toml` names.
     pub fn adopt_theme(&mut self, theme: Theme) {
+        self.show_kept(theme);
+        self.remember_theme();
+    }
+
+    /// Keep `theme` among the user's themes and show it, for this run.
+    fn show_kept(&mut self, theme: Theme) {
         self.shell.themes.retain(|t| t.id != theme.id);
         self.shell.themes.push(theme.clone());
         self.shell.config.ui.theme = theme.id.clone();
         self.toast(format!("theme: {}", theme.name));
         self.show_theme(theme);
+    }
+
+    /// Write the chosen `ui.theme` to `config.toml` off the UI thread, so the next launch opens
+    /// on it. The demo has no profile and keeps the choice for the run.
+    fn remember_theme(&mut self) {
+        if !self.shell.real { return; }
+        self.shell.theme_turn += 1;
+        self.spawn_job(Job::RememberTheme { theme: self.shell.config.ui.theme.clone(), turn: self.shell.theme_turn });
     }
 
     /// With `ui.theme = "system"`: switch when the OS appearance the view saw changes.
@@ -178,7 +195,8 @@ impl AppState {
             theme.name = format!("{} (fixed)", theme.name);
         }
         let name = theme.name.clone();
-        self.adopt_theme(theme);
+        // Only in memory until `:theme save`: config.toml keeps naming a theme that exists.
+        self.show_kept(theme);
         let fixed = failing.len() - still;
         self.toast(format!("fixed {fixed} of {} roles · :theme save <name> keeps {name}", failing.len()));
     }

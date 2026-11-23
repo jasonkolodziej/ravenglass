@@ -126,6 +126,8 @@ pub fn parse(head: &str, rest: &str) -> Option<Result<ShellCmd, String>> {
 pub struct Shell {
     /// Running on a profile (not the demo accounts).
     pub real: bool,
+    /// Counts `:theme` writes to `config.toml`, so the last one asked for is the one kept.
+    pub theme_turn: u64,
     /// Jobs run in place: headless runs and tests.
     pub inline: bool,
     pub profile: Option<Profile>,
@@ -163,6 +165,7 @@ impl Default for Shell {
         let (jobs_tx, jobs_rx) = channel();
         Shell {
             real: false,
+            theme_turn: 0,
             inline: false,
             profile: None,
             services: Services::offline(Arc::new(MemorySecrets::default())),
@@ -398,6 +401,8 @@ impl AppState {
             }
             JobDone::ThemeImported(Ok(theme)) | JobDone::ThemeSaved(Ok(theme)) => self.adopt_theme(*theme),
             JobDone::ThemeImported(Err(reason)) | JobDone::ThemeSaved(Err(reason)) => self.error(format!("theme: {reason}")),
+            JobDone::ThemeRemembered(Ok(())) => {}
+            JobDone::ThemeRemembered(Err(reason)) => self.error(format!("theme: kept for this run only · {reason}")),
             JobDone::Reloaded(loaded) => {
                 let accounts = self.shell.accounts.clone();
                 self.apply_loaded(*loaded);

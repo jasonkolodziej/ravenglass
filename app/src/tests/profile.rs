@@ -331,6 +331,42 @@ fn themes_are_imported_saved_and_fixed_for_contrast() {
 }
 
 #[test]
+fn the_chosen_theme_is_written_to_config_toml_and_comes_back_on_the_next_start() {
+    let temp = TempProfile::new("remember");
+    temp.write("config.toml", "# my settings\n[ui]\ntheme = \"ravenglass-night\"  # the dark one\nreader_default = \"text\"\n");
+    let mut s = real_state(&temp, Arc::new(MemorySecrets::default()));
+    s.switch_theme("frost");
+    assert_eq!(temp.read("config.toml"), "# my settings\n[ui]\ntheme = \"ravenglass-frost\"  # the dark one\nreader_default = \"text\"\n", "only the value changed");
+    let again = real_state(&temp, Arc::new(MemorySecrets::default()));
+    assert_eq!(again.theme.id, "ravenglass-frost");
+    assert_eq!(again.reader_view, ReaderView::Text);
+
+    s.switch_theme("system");
+    assert_eq!(Config::parse(&temp.read("config.toml")).expect("it parses").ui.theme, "system");
+
+    // A theme that is only in memory (fix-contrast before :theme save) is not named in the file.
+    let scheme = temp.dir.join("dim.conf");
+    std::fs::write(&scheme, "background = #101010\nforeground = #303030\npalette = 7=#2a2a2a\npalette = 12=#252540\n").expect("the scheme");
+    s.perform(crate::actions::parse_command(&format!("theme import {}", scheme.display())).expect("a command"));
+    assert_eq!(s.theme.id, "dim", "{:?}", s.toast);
+    assert_eq!(Config::parse(&temp.read("config.toml")).expect("it parses").ui.theme, "dim", "an imported theme is on disk");
+    s.perform(crate::actions::parse_command("theme fix-contrast").expect("a command"));
+    assert_eq!(s.theme.id, "dim-fixed");
+    assert_eq!(Config::parse(&temp.read("config.toml")).expect("it parses").ui.theme, "dim");
+}
+
+#[test]
+fn a_config_toml_that_does_not_parse_is_not_rewritten_by_a_theme_switch() {
+    let temp = TempProfile::new("remember-broken");
+    let mut s = real_state(&temp, Arc::new(MemorySecrets::default()));
+    temp.write("config.toml", "[ui]\nno_such_key = 1\n");
+    s.switch_theme("frost");
+    assert_eq!(s.theme.id, "ravenglass-frost", "the switch still happens for this run");
+    assert!(s.toast.as_ref().is_some_and(|t| t.error && t.text.contains("this run only")), "{:?}", s.toast);
+    assert_eq!(temp.read("config.toml"), "[ui]\nno_such_key = 1\n");
+}
+
+#[test]
 fn keys_are_rebound_from_the_config_and_clashes_are_refused() {
     use crate::actions::Action;
     use crate::keys::parse_seq;

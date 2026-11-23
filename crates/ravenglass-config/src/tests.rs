@@ -66,3 +66,34 @@ fn saving_and_loading_round_trips() {
     c.privacy.lock_after_minutes = 15;
     assert_eq!(Config::parse(&c.to_toml()).unwrap(), c);
 }
+
+#[test]
+fn with_theme_changes_only_the_theme_and_keeps_comments() {
+    let out = with_theme(APPENDIX_A, "ravenglass-frost").unwrap();
+    assert!(out.contains(r#"theme = "ravenglass-frost"       # or "system" with [ui.system] light/dark"#), "{out}");
+    assert_eq!(out.replace("ravenglass-frost", "ravenglass-night"), APPENDIX_A);
+    assert_eq!(Config::parse(&out).unwrap().ui.theme, "ravenglass-frost");
+}
+
+#[test]
+fn with_theme_adds_the_key_or_the_table_when_missing() {
+    let empty = with_theme("", "system").unwrap();
+    assert_eq!(Config::parse(&empty).unwrap().ui.theme, "system");
+    let src = "# mine\n[ui]\nreader_default = \"text\"\n\n[privacy]\nlock_on_launch = true\n";
+    let out = with_theme(src, "my-theme").unwrap();
+    assert!(out.starts_with("# mine\n[ui]\nreader_default = \"text\"\n"), "{out}");
+    let parsed = Config::parse(&out).unwrap();
+    assert_eq!((parsed.ui.theme.as_str(), parsed.ui.reader_default, parsed.privacy.lock_on_launch), ("my-theme", ReaderDefault::Text, true));
+}
+
+#[test]
+fn with_theme_refuses_a_file_that_does_not_parse() {
+    assert!(with_theme("[ui]\nnot_a_key = 1\n", "x").is_err());
+    assert!(with_theme("[ui\n", "x").is_err());
+}
+
+#[test]
+fn with_theme_quotes_the_name() {
+    let out = with_theme("", "a \"quoted\" name").unwrap();
+    assert_eq!(Config::parse(&out).unwrap().ui.theme, "a \"quoted\" name");
+}
