@@ -3254,6 +3254,7 @@ version = "0.0.0"
 name = "ravenglass-engine"
 version = "0.0.0"
 dependencies = [
+ "mail-blitz",
  "mail-core",
  "mail-mock",
  "mail-render",

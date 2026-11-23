@@ -10,6 +10,7 @@ description = "Ravenglass engine: the Command/Event boundary over backends, the 
 mail-core = { path = "../mail-core" }
 mail-store = { path = "../mail-store" }
 mail-render = { path = "../mail-render" }
+mail-blitz = { path = "../mail-blitz" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

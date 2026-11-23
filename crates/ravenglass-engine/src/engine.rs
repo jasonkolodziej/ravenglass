@@ -40,6 +40,7 @@ struct Outgoing { account: AccountId, raw: Vec<u8>, from: Address, rcpt: Vec<Add
 struct Done { op: Op, pending: bool }
 
 pub struct Engine {
+    pub(crate) html: crate::html::Html,
     store: Store,
     config: Config,
     accounts: BTreeMap<AccountId, Account>,
@@ -54,13 +55,17 @@ type Outcome<T = ()> = std::result::Result<T, String>;
 
 impl Engine {
     pub fn new(store: Store, config: Config) -> Self {
-        Self { store, config, accounts: BTreeMap::new(), outbox: BTreeMap::new(), next_outbox: 1, history: BTreeMap::new() }
+        Self { html: crate::html::Html::default(), store, config, accounts: BTreeMap::new(), outbox: BTreeMap::new(), next_outbox: 1, history: BTreeMap::new() }
     }
 
     pub fn add_backend(&mut self, backend: Arc<dyn MailBackend>) {
         let account = Account { backend: backend.clone(), sync: account_sync::State::Disconnected, queue: VecDeque::new(), total: 0 };
         self.accounts.insert(backend.account().clone(), account);
     }
+
+    /// Give the engine a render thread. Without one, `RenderHtml` answers `HtmlFailed` and the
+    /// reader shows the text view.
+    pub fn set_renderer(&mut self, renderer: mail_blitz::Renderer) { self.html.renderer = Some(renderer); }
 
     pub fn store(&self) -> &Store { &self.store }
 
@@ -135,6 +140,17 @@ impl Engine {
                 out.push(Event::Addresses { prefix, addresses });
                 Ok(())
             }
+            Command::RenderHtml { view, message, options } => {
+                let raw = self.raw(&message).await?;
+                let parsed = mail_render::parse(&raw.bytes).map_err(text)?;
+                let html = parsed.html.as_deref().map(|h| mail_render::sanitize(h, &message).html);
+                self.html.open(view, html, parsed.inline, options, out);
+                Ok(())
+            }
+            Command::ResizeHtml { view, width } => { self.html.resize(view, width, out); Ok(()) }
+            Command::HtmlTile { view, index } => { self.html.tile(view, index, out); Ok(()) }
+            Command::HtmlPointer { view, x, y } => { self.html.pointer(view, x, y, out); Ok(()) }
+            Command::CloseHtml(view) => { self.html.close(view); Ok(()) }
             Command::Tick => {
                 let accounts: Vec<AccountId> = self.accounts.keys().cloned().collect();
                 for account in accounts { self.sync_event(&account, account_sync::Event::Timer(now), now, out).await?; }
@@ -299,17 +315,17 @@ impl Engine {
 
     // ── reader ─────────────────────────────────────────────────────────────────────────────
 
+    /// A message's raw bytes: from the cache, else from the server.
+    async fn raw(&mut self, id: &MessageId) -> Outcome<RawMessage> {
+        if let Some(raw) = self.store.body(id).map_err(text)? { return Ok(raw); }
+        let account = self.store.account_of(id).map_err(text)?.ok_or("unknown message")?;
+        let backend = self.accounts.get(&account).ok_or("unknown account")?.backend.clone();
+        backend.fetch_body(id).await.map_err(|e| e.to_string())
+    }
+
     async fn open_message(&mut self, id: MessageId, view: ReaderView, out: &mut Events) -> Outcome {
-        let cached = self.store.body(&id).map_err(text)?;
-        let fresh = cached.is_none();
-        let raw = match cached {
-            Some(raw) => raw,
-            None => {
-                let account = self.store.account_of(&id).map_err(text)?.ok_or("unknown message")?;
-                let backend = self.accounts.get(&account).ok_or("unknown account")?.backend.clone();
-                backend.fetch_body(&id).await.map_err(|e| e.to_string())?
-            }
-        };
+        let fresh = self.store.body(&id).map_err(text)?.is_none();
+        let raw = self.raw(&id).await?;
         let parsed = mail_render::parse(&raw.bytes).map_err(text)?;
         if fresh { self.store.put_body(&raw, &parsed.index_text(&id)).map_err(text)?; }
         let prefer = match view { ReaderView::Html => Prefer::Html, ReaderView::Text => Prefer::Plain };
@@ -368,5 +384,6 @@ fn command_name(cmd: &Command) -> &'static str {
         Command::OpenMessage { .. } => "open message", Command::SetFlags { .. } => "set flags", Command::Move { .. } | Command::MoveToRole { .. } => "move",
         Command::Undo(_) => "undo", Command::Search { .. } => "search", Command::Send { .. } => "send", Command::CancelSend(_) => "cancel send",
         Command::RetrySend(_) => "retry send", Command::AllowImages { .. } => "allow images", Command::CompleteAddress { .. } => "complete address", Command::Tick => "timers",
+        Command::RenderHtml { .. } | Command::ResizeHtml { .. } | Command::HtmlTile { .. } | Command::HtmlPointer { .. } | Command::CloseHtml(_) => "render HTML",
     }
 }

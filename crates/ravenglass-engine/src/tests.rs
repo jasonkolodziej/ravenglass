@@ -252,3 +252,62 @@ fn runner_thread_serves_commands_and_delivers_timers() {
     handle.shutdown();
     assert_eq!(backend.inner.sent.lock().unwrap().len(), 1);
 }
+
+/// A backend whose first Inbox message is the HTML newsletter fixture.
+struct WithHtml(MockBackend);
+
+impl MailBackend for WithHtml {
+    fn account(&self) -> &AccountId { self.0.account() }
+    fn list_folders(&self) -> BoxFut<'_, Result<Vec<Folder>>> { self.0.list_folders() }
+    fn sync_folder<'a>(&'a self, folder: &'a FolderId, since: &'a SyncToken) -> BoxFut<'a, Result<FolderDelta>> { self.0.sync_folder(folder, since) }
+    fn fetch_body<'a>(&'a self, msg: &'a MessageId) -> BoxFut<'a, Result<RawMessage>> {
+        if msg.0.ends_with("/00000") {
+            let bytes = include_bytes!("../../../fixtures/emails/02-newsletter-tables.eml").to_vec();
+            return Box::pin(async move { Ok(RawMessage { id: msg.clone(), bytes }) });
+        }
+        self.0.fetch_body(msg)
+    }
+    fn set_flags<'a>(&'a self, msgs: &'a [MessageId], add: Flags, remove: Flags) -> BoxFut<'a, Result<()>> { self.0.set_flags(msgs, add, remove) }
+    fn move_to<'a>(&'a self, msgs: &'a [MessageId], to: &'a FolderId) -> BoxFut<'a, Result<()>> { self.0.move_to(msgs, to) }
+    fn append_draft<'a>(&'a self, raw: &'a [u8]) -> BoxFut<'a, Result<MessageId>> { self.0.append_draft(raw) }
+    fn send<'a>(&'a self, raw: &'a [u8], from: &'a Address, rcpt: &'a [Address]) -> BoxFut<'a, Result<()>> { self.0.send(raw, from, rcpt) }
+    fn idle<'a>(&'a self, folder: &'a FolderId, events: Sender<IdleEvent>) -> BoxFut<'a, Result<()>> { self.0.idle(folder, events) }
+}
+
+#[test]
+fn html_mail_is_laid_out_tiled_hit_tested_and_resized_through_the_engine() {
+    use mail_core::machine::html_view;
+    let mut engine = Engine::new(Store::open_in_memory().unwrap(), Config::default());
+    engine.add_backend(Arc::new(WithHtml(MockBackend::new("iCloud", 46, 20))));
+    let run = |engine: &mut Engine, cmd| block_on(engine.handle(cmd, 0.0));
+    run(&mut engine, Command::OpenAccount(AccountId::from("iCloud")));
+    let (view, html, plain) = (ViewId(1), MessageId::from("iCloud/00000"), MessageId::from("iCloud/00001"));
+    let render = |message: &MessageId| Command::RenderHtml { view, message: message.clone(), options: HtmlOptions::default() };
+
+    // Without a render thread the reader is told to use the text view.
+    assert!(matches!(run(&mut engine, render(&html)).as_slice(), [Event::HtmlFailed { .. }]));
+    engine.set_renderer(Renderer::spawn().unwrap());
+
+    let Some(Event::Body { body, .. }) = run(&mut engine, Command::OpenMessage { id: html.clone(), view: ReaderView::Html }).pop() else { panic!() };
+    assert_eq!(body.images, mail_core::machine::image_load::State::Blocked { remote: 1 });
+    let Some(Event::HtmlLaidOut { info, .. }) = run(&mut engine, render(&html)).pop() else { panic!("no layout") };
+    assert_eq!((info.width, info.tiles, info.refused_requests), (680, 1, 0));
+    assert_eq!(engine.html.state(view), Some(&html_view::State::Rastering { width: 680, height: info.height, pending: 1 }));
+    let Some(Event::HtmlTile { tile, .. }) = run(&mut engine, Command::HtmlTile { view, index: 0 }).pop() else { panic!("no tile") };
+    assert_eq!((tile.width, tile.height), (info.width, info.height));
+    assert_eq!(engine.html.state(view), Some(&html_view::State::Ready { width: 680, height: info.height }));
+
+    let hovers: Vec<Event> = (0..info.height).step_by(8).flat_map(|y| block_on(engine.handle(Command::HtmlPointer { view, x: 340.0, y: y as f32 }, 0.0))).collect();
+    assert!(hovers.iter().any(|e| matches!(e, Event::LinkHover { link: Some(l), .. } if l.text == "Unsubscribe")), "the centred footer link");
+    assert!(hovers.iter().any(|e| matches!(e, Event::LinkHover { link: None, .. })));
+
+    let Some(Event::HtmlLaidOut { info: narrow, .. }) = run(&mut engine, Command::ResizeHtml { view, width: 320 }).pop() else { panic!("no relayout") };
+    assert_eq!(narrow.width, 320);
+    assert!(run(&mut engine, Command::ResizeHtml { view, width: 320 }).is_empty(), "the same width keeps the layout");
+
+    // A plain-text message has no HTML view, and closing a view stops its events.
+    assert!(matches!(run(&mut engine, render(&plain)).as_slice(), [Event::HtmlFailed { failure: HtmlFailure::Empty, .. }]));
+    run(&mut engine, render(&html));
+    run(&mut engine, Command::CloseHtml(view));
+    assert!(run(&mut engine, Command::HtmlTile { view, index: 0 }).is_empty());
+}

@@ -2,6 +2,7 @@
 //! Both are plain serde data, so the same enums cross a thread channel on desktop and
 //! `postMessage` on the web.
 
+use mail_blitz::{Failure, Info, Link, Options, Tile};
 use mail_core::machine::{account_sync, image_load, outbox};
 use mail_core::*;
 use mail_render::{SanitizedHtml, TextBody};
@@ -14,6 +15,10 @@ pub struct OpId(pub i64);
 /// A queued outgoing message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct OutboxId(pub u64);
+
+/// One HTML surface in the UI (a reader pane). The UI picks the number.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct ViewId(pub u64);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReaderView { Html, Text }
@@ -37,6 +42,15 @@ pub enum Command {
     RetrySend(OutboxId),
     AllowImages { message: MessageId, scope: image_load::Scope },
     CompleteAddress { prefix: String, limit: u32 },
+    /// Lay out a message's HTML for a reader pane. Answered by [`Event::HtmlLaidOut`] or
+    /// [`Event::HtmlFailed`]; tiles are then asked for one by one as they scroll into view.
+    RenderHtml { view: ViewId, message: MessageId, options: Options },
+    /// The pane settled at a new width (CSS pixels). Send it once a resize drag ends.
+    ResizeHtml { view: ViewId, width: u32 },
+    HtmlTile { view: ViewId, index: u32 },
+    /// The pointer is at this point of the document, in CSS pixels.
+    HtmlPointer { view: ViewId, x: f32, y: f32 },
+    CloseHtml(ViewId),
     /// Deliver due timers. The runner sends it when the earliest [`Event::WakeAt`] passes.
     Tick,
 }
@@ -57,6 +71,13 @@ pub enum Event {
     Body { id: MessageId, body: Box<BodyView> },
     ImagesAllowed { message: MessageId },
     Addresses { prefix: String, addresses: Vec<Address> },
+    /// The HTML is laid out; `info` gives its size in device pixels and how many tiles it has.
+    HtmlLaidOut { view: ViewId, info: Info },
+    HtmlTile { view: ViewId, tile: Box<Tile> },
+    /// The link under the pointer, for the status line and the cursor.
+    LinkHover { view: ViewId, link: Option<Link> },
+    /// Show the text view for this message instead ("Simplified view").
+    HtmlFailed { view: ViewId, failure: Failure },
     /// Call back with [`Command::Tick`] at this time (seconds, the caller's clock).
     WakeAt(f64),
     /// One line for the status bar. Never contains message content or addresses.
