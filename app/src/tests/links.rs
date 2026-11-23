@@ -85,9 +85,9 @@ fn a_link_whose_text_names_another_site_asks_first() {
 
 #[test]
 fn only_web_and_mail_links_leave_the_app() {
-    assert!(platform::open_url("file:///etc/passwd").is_err());
-    assert!(platform::open_url("javascript:alert(1)").is_err());
-    assert!(platform::open_url("  https://status.example/notes ").is_ok());
+    assert!(platform::open_link("file:///etc/passwd").is_err());
+    assert!(platform::open_link("javascript:alert(1)").is_err());
+    assert!(platform::open_link("  https://status.example/notes ").is_ok());
     assert!(platform::recorded().contains(&"https://status.example/notes".to_owned()));
     assert_eq!(host("https://user@ferries.example:8443/norrland?x#y"), "ferries.example:8443");
     assert_eq!(host("mailto:odin@asgard.example"), "asgard.example");

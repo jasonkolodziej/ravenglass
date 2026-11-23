@@ -59,7 +59,7 @@ impl AppState {
     }
 
     fn open_link(&mut self, href: &str) {
-        match crate::platform::open_url(href) {
+        match crate::platform::open_link(href) {
             Ok(()) => self.toast(format!("opened {}", host(href))),
             Err(reason) => self.error(reason),
         }

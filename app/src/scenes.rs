@@ -140,6 +140,43 @@ fn compose_sending(s: &mut AppState) {
     s.perform(Action::Send);
 }
 
+/// A profile with no account: the wallpaper and how to add one.
+fn onboarding(s: &mut AppState) {
+    s.link = crate::link::Link::Off;
+    s.shell.real = true;
+    s.start_real_engine();
+}
+
+/// The add-account form on a guessed custom host, with the guess warning.
+fn account_form(s: &mut AppState) {
+    use crate::accounts_ui::{Flow, Form};
+    let email = "huginn@norrland.example";
+    onboarding(s);
+    if let Ok(settings) = mail_auth::autoconfig::guess(email) {
+        s.shell.flow = Some(Flow::Review { form: Form::from_settings(mail_core::AccountId::from("norrland"), email, settings) });
+    }
+}
+
+/// `:lock` over the triage view: nothing of it may show.
+fn locked(s: &mut AppState) {
+    triage(s);
+    s.perform(Action::Shell(crate::shell::ShellCmd::Lock));
+}
+
+fn colors(s: &mut AppState) {
+    s.perform(Action::Shell(crate::shell::ShellCmd::Colors));
+}
+
+fn colors_frost(s: &mut AppState) {
+    s.theme = Theme::frost();
+    colors(s);
+}
+
+fn onboarding_frost(s: &mut AppState) {
+    s.theme = Theme::frost();
+    onboarding(s);
+}
+
 pub const SCENES: &[Scene] = &[
     ("default", triage),
     ("night", triage),
@@ -165,4 +202,10 @@ pub const SCENES: &[Scene] = &[
     ("compose-reply-frost", compose_reply_frost),
     ("compose-narrow", compose_narrow),
     ("compose-sending", compose_sending),
+    ("onboarding", onboarding),
+    ("onboarding-frost", onboarding_frost),
+    ("account-form", account_form),
+    ("locked", locked),
+    ("colors", colors),
+    ("colors-frost", colors_frost),
 ];

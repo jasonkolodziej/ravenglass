@@ -146,7 +146,6 @@ impl KeySpec {
     }
 
     /// Whether two specs are pressed with the same keys on this platform.
-    #[cfg(test)]
     pub fn same_keys(&self, o: &KeySpec) -> bool {
         let modified = self.ctrl || self.cmd || o.ctrl || o.cmd;
         let key = match (self.key, o.key) {
@@ -258,12 +257,25 @@ fn rows() -> Vec<(Action, &'static [&'static str], &'static [&'static str])> {
     v
 }
 
+/// The built-in table, before the user's `[keys]`.
+pub fn default_table() -> Vec<Binding> {
+    let parse = |specs: &[&str]| specs.iter().filter_map(|s| parse_seq(s).ok()).collect::<Vec<Seq>>();
+    rows().into_iter().map(|(action, normal, chords)| Binding { action, normal: parse(normal), chords: parse(chords) }).collect()
+}
+
+/// The table with the user's `[keys]` applied (`keymap::build` makes and checks it).
+static CUSTOM: std::sync::RwLock<Option<&'static [Binding]>> = std::sync::RwLock::new(None);
+
+/// Use `table` from now on; `None` goes back to the built-in one. A replaced table is leaked: it
+/// is a few kilobytes and changes only when the config is read.
+pub fn install(table: Option<Vec<Binding>>) {
+    if let Ok(mut custom) = CUSTOM.write() { *custom = table.map(|t| &*Vec::leak(t)); }
+}
+
 pub fn table() -> &'static [Binding] {
+    if let Ok(custom) = CUSTOM.read() && let Some(table) = *custom { return table; }
     static TABLE: OnceLock<Vec<Binding>> = OnceLock::new();
-    TABLE.get_or_init(|| {
-        let parse = |specs: &[&str]| specs.iter().filter_map(|s| parse_seq(s).ok()).collect::<Vec<Seq>>();
-        rows().into_iter().map(|(action, normal, chords)| Binding { action, normal: parse(normal), chords: parse(chords) }).collect()
-    })
+    TABLE.get_or_init(default_table)
 }
 
 /// Specs in the table's source that fail to parse (a test keeps this empty).
@@ -314,8 +326,11 @@ pub fn hint(action: &Action) -> String {
 
 /// Pairs of bindings that can't both work: the same keys, or one a prefix of the other.
 #[cfg(test)]
-pub fn clashes() -> Vec<(String, String)> {
-    let all: Vec<(&Action, &Seq)> = table().iter().flat_map(|b| b.normal.iter().chain(&b.chords).map(move |s| (&b.action, s))).collect();
+pub fn clashes() -> Vec<(String, String)> { clashes_in(table()) }
+
+/// [`clashes`] for any table: `[keys]` from the config is checked with it before it is used.
+pub fn clashes_in(table: &[Binding]) -> Vec<(String, String)> {
+    let all: Vec<(&Action, &Seq)> = table.iter().flat_map(|b| b.normal.iter().chain(&b.chords).map(move |s| (&b.action, s))).collect();
     let mut out = Vec::new();
     for (i, (a_act, a)) in all.iter().enumerate() {
         for (b_act, b) in &all[i + 1..] {

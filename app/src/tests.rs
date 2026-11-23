@@ -14,3 +14,11 @@ mod panes;
 mod state;
 #[path = "tests/ui.rs"]
 mod ui;
+#[path = "tests/profile.rs"]
+mod profile;
+#[path = "tests/accounts.rs"]
+mod accounts;
+#[path = "tests/lock.rs"]
+mod lock;
+#[path = "tests/greenmail.rs"]
+mod greenmail;

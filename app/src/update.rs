@@ -17,6 +17,7 @@ const ERROR_SECS: f64 = 9.0;
 impl AppState {
     /// One key press. True when it did something.
     pub fn key(&mut self, press: KeyPress) -> bool {
+        if let Some(acted) = self.shell_key(press) { return acted; }
         if self.link_confirm_key(press) { return true; }
         self.mode_key(press) || self.compose_window_key(press)
     }
@@ -104,6 +105,8 @@ impl AppState {
                     self.dispatch(Command::OpenMessage { id, view: self.reader_view });
                 }
             }
+            Action::Shell(cmd) => self.shell_cmd(cmd),
+            Action::LoadImages { .. } if !self.images_offered() => self.toast("remote images are off (privacy.remote_images = never)"),
             Action::LoadImages { always } => {
                 use mail_core::machine::image_load::Scope;
                 if let Some(message) = self.ws().open.as_ref().map(|e| e.id.clone()) {
@@ -338,21 +341,8 @@ impl AppState {
         if let Err(e) = ws.panes.split(axis, kind, area) { self.error(e.message()); }
     }
 
-    fn set_theme(&mut self, name: &str) {
-        let theme = match name {
-            "night" | "ravenglass-night" => Some(ravenglass_theme::Theme::night()),
-            "frost" | "ravenglass-frost" => Some(ravenglass_theme::Theme::frost()),
-            _ => None,
-        };
-        match theme {
-            Some(theme) => {
-                self.toast(format!("theme: {}", theme.name));
-                self.theme = theme;
-                self.fx.push(Fx::ThemeChanged);
-            }
-            None => self.error(format!("no theme named {name}")),
-        }
-    }
+    /// Built-in and user themes, and `system` (`settings.rs`).
+    fn set_theme(&mut self, name: &str) { self.switch_theme(name); }
 
     fn go_to_mailbox(&mut self, name: &str) {
         let (account, folder_name) = match name.split_once('/') {

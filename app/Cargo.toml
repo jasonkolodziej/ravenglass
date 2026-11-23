@@ -16,7 +16,12 @@ mail-core = { path = "../crates/mail-core" }
 mail-mock = { path = "../crates/mail-mock" }
 mail-store = { path = "../crates/mail-store" }
 mail-render = { path = "../crates/mail-render" }
-ravenglass-engine = { path = "../crates/ravenglass-engine" }
+ravenglass-engine = { path = "../crates/ravenglass-engine", features = ["http"] }
 ravenglass-theme = { path = "../crates/ravenglass-theme" }
 ravenglass-brand = { path = "../crates/ravenglass-brand" }
 open = "5"                                             # links leave through the system browser (platform::open_url)
+ravenglass-accounts = { path = "../crates/ravenglass-accounts" }
+ravenglass-config = { path = "../crates/ravenglass-config" }
+mail-auth = { path = "../crates/mail-auth" }
+serde.workspace = true
+toml.workspace = true

@@ -168,6 +168,10 @@ pub enum Fx {
     Quit,
     /// Take the keyboard away from the focused text field.
     Blur,
+    /// Open a link in the system browser (the OAuth sign-in page).
+    OpenUrl(String),
+    /// Apply this change with no motion: nothing of what was on screen may linger (the lock).
+    Instant,
 }
 
 /// Engine start-up, after the first frame (plan §2 "Data flow").
@@ -247,6 +251,8 @@ pub struct AppState {
     pub compose: crate::compose::Compose,
     /// The link under the pointer in the HTML reader (`links.rs`).
     pub links: crate::links::Links,
+    /// The profile, accounts, settings, account form and app lock (`shell.rs`).
+    pub shell: crate::shell::Shell,
 }
 
 /// Below this many columns of pane area the layout collapses to one pane.

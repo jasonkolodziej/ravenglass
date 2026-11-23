@@ -8,7 +8,7 @@ use crate::modes::Mode;
 use crate::state::*;
 use mail_core::machine::account_sync;
 use mail_core::{AccountId, FolderId, MessageId};
-use ravenglass_engine::{Command, DarkMode, Event, HtmlOptions, PAGE, ReaderView, ViewId};
+use ravenglass_engine::{Command, Event, HtmlOptions, PAGE, ReaderView, ViewId};
 use ravenglass_theme::Theme;
 use std::cell::Cell;
 use std::collections::VecDeque;
@@ -55,6 +55,7 @@ impl AppState {
             frame: Cell::new(frame),
             compose: Default::default(),
             links: Default::default(),
+            shell: Default::default(),
         }
     }
 
@@ -77,6 +78,7 @@ impl AppState {
 
     /// Start the engine thread (the window, after its first frame).
     pub fn start_engine(&mut self) {
+        if self.shell.real { return self.start_real_engine(); }
         let Some(waker) = self.waker.clone() else { return };
         self.link = Link::start(move || waker());
         self.boot = Boot::Started;
@@ -125,7 +127,8 @@ impl AppState {
             Event::SyncState { account, state } => {
                 if state == account_sync::State::Idle {
                     self.mail.synced_at = Some(self.wall.now());
-                    self.rerun_searches();
+                    // A real server gets new mail between syncs; the lists on show follow it.
+                    if self.shell.real { self.reload(); } else { self.rerun_searches(); }
                 }
                 self.mail.sync.insert(account, state);
             }
@@ -163,7 +166,8 @@ impl AppState {
             Event::Body { id, body } => {
                 let has_html = body.html.is_some();
                 self.mail.bodies.put(id.clone(), *body);
-                if has_html && self.ws().open.as_ref().is_some_and(|e| e.id == id) { self.render_html(id); }
+                if has_html && self.ws().open.as_ref().is_some_and(|e| e.id == id) { self.render_html(id.clone()); }
+                if has_html { self.auto_images(&id); }
             }
             Event::Notice(line) => self.toast(line),
             Event::Error { context, message } => {
@@ -174,7 +178,7 @@ impl AppState {
                 }
                 self.error(format!("{context}: {message}"));
             }
-            Event::ImagesAllowed { .. } | Event::WakeAt(_) | Event::Watch { .. } | Event::AccountRemoved(_) => {}
+            Event::WakeAt(_) | Event::Watch { .. } | Event::AccountRemoved(_) => {}
             // Nothing was journaled, so no `Applied` will answer the pending action.
             Event::Unchanged => { self.pending.pop_front(); }
             Event::Draft(draft) => self.fold_draft(*draft),
@@ -183,6 +187,7 @@ impl AppState {
             Event::OutboxState { id, state } => self.fold_outbox(id, state),
             Event::Addresses { prefix, addresses } => self.fold_addresses(&prefix, addresses),
             Event::LinkHover { link, .. } => self.links.hover = link,
+            Event::ImagesAllowed { message } => self.images_allowed(message),
             Event::HtmlLaidOut { info, .. } => {
                 self.html.info = Some(info);
                 self.html.tiles.clear();
@@ -203,7 +208,7 @@ impl AppState {
         let width = if points > 80.0 { points as u32 } else { 640 };
         // Emails assume a light page, so the card takes the light theme's colours whatever the UI theme.
         let paper = Theme::frost();
-        let options = HtmlOptions { width, scale: scale.max(1.0), dark: DarkMode::Paper, text: paper.role("ui.text").hex(), paper: paper.role("ui.bg").hex(), link: paper.role("mail.link").hex() };
+        let options = HtmlOptions { width, scale: scale.max(1.0), dark: self.html_dark(), text: paper.role("ui.text").hex(), paper: paper.role("ui.bg").hex(), link: paper.role("mail.link").hex() };
         self.html = HtmlPane { message: Some(message.clone()), scale: options.scale, ..Default::default() };
         self.dispatch(Command::RenderHtml { view: HTML_VIEW, message, options });
     }

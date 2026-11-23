@@ -310,6 +310,8 @@ fn every_scene_draws() {
     for (name, _) in crate::scenes::SCENES {
         let rt = scene(name, if name.starts_with("narrow") { (800.0, 700.0) } else { (1400.0, 880.0) });
         let els = rt.elements();
+        // The lock screen is the wallpaper alone, by design (`tests/lock.rs`).
+        if *name == "locked" { continue; }
         assert!(keyed(&els, "tabs").is_some() && keyed(&els, "workspaces").is_some(), "{name} has its chrome");
         assert!(els.len() > 20, "{name} draws something");
     }
