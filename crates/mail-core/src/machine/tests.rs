@@ -113,3 +113,35 @@ fn html_view_crash_falls_back_for_good() {
     assert!(step(&mut s, Event::Parsed).is_empty());
     assert_eq!(s, State::Failed);
 }
+
+#[test]
+fn app_locks_after_idle_time_and_unlocks_only_on_a_successful_prompt() {
+    use app_lock::*;
+    let policy = Policy { idle_secs: 600.0, lock_on_launch: false };
+    let (mut s, fx) = launch(policy, 0.0);
+    assert_eq!(fx, vec![Effect::WakeAt(600.0)]);
+    step(&mut s, Event::Activity(500.0), policy);
+    assert_eq!(step(&mut s, Event::Timer(600.0), policy), vec![Effect::WakeAt(1100.0)], "activity pushes the lock back");
+    assert_eq!(step(&mut s, Event::Timer(1100.0), policy), vec![Effect::Conceal]);
+    assert_eq!(s, State::Locked);
+    assert_eq!(step(&mut s, Event::Activity(1101.0), policy), vec![Effect::Prompt]);
+    assert!(step(&mut s, Event::Prompted { ok: false }, policy).is_empty());
+    assert_eq!(s, State::Locked, "a failed or cancelled prompt stays locked");
+    step(&mut s, Event::Unlock, policy);
+    assert_eq!(step(&mut s, Event::Prompted { ok: true }, policy), vec![Effect::Reveal]);
+    assert_eq!(unlocked(&mut s, policy, 1200.0), vec![Effect::WakeAt(1800.0)]);
+    assert_eq!(s, State::Unlocked { last_activity: 1200.0 });
+}
+
+#[test]
+fn app_lock_on_launch_conceals_first_and_never_idles_out_when_disabled() {
+    use app_lock::*;
+    let (s, fx) = launch(Policy { idle_secs: 0.0, lock_on_launch: true }, 0.0);
+    assert_eq!((s, fx), (State::Prompting, vec![Effect::Conceal, Effect::Prompt]));
+    let off = Policy { idle_secs: 0.0, lock_on_launch: false };
+    let (mut s, fx) = launch(off, 0.0);
+    assert!(fx.is_empty() && step(&mut s, Event::Timer(1e9), off).is_empty());
+    assert_eq!(step(&mut s, Event::LockNow, off), vec![Effect::Conceal], "locking by hand always works");
+    assert!(unlocked(&mut s, off, 5.0).is_empty(), "only a prompt can unlock");
+    assert_eq!(s, State::Locked);
+}

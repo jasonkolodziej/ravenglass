@@ -5,6 +5,7 @@
 use crate::types::MailError;
 use serde::{Deserialize, Serialize};
 
+pub mod app_lock;
 pub mod compose;
 pub mod html_view;
 pub mod image_load;

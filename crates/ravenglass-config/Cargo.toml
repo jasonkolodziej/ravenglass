@@ -1,0 +1,12 @@
+[package]
+name = "ravenglass-config"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Ravenglass user configuration (config.toml): strict parsing, defaults and validation."
+
+[dependencies]
+serde.workspace = true
+toml.workspace = true
+thiserror.workspace = true

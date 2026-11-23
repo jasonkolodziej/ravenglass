@@ -12,6 +12,7 @@ members = [
     "crates/mail-jmap",
     "crates/relay-proto",
     "crates/relay-client",
+    "crates/ravenglass-config",
     "crates/ravenglass-engine",
     "crates/ravenglass-relay",
     "crates/ravenglass-theme",

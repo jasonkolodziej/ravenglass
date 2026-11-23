@@ -3749,6 +3749,15 @@ name = "ravenglass-brand"
 version = "0.0.0"
 
 [[package]]
+name = "ravenglass-config"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.21",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "ravenglass-engine"
 version = "0.0.0"
 dependencies = [
