@@ -137,9 +137,10 @@ impl Theme {
     }
 }
 
-/// Roles drawn as text on the background (the wallpaper, chrome and selection fills are exempt).
+/// Roles drawn as text on the background (the wallpaper, chrome and selection fills are exempt,
+/// and so is `ui.onAccent`, which is text on accent-coloured blocks, never on the background).
 fn is_text_role(role: &str) -> bool {
-    !matches!(role, "ui.bg" | "ui.chrome" | "ui.border" | "ui.selection" | "wallpaper" | "glass.tint")
+    !matches!(role, "ui.bg" | "ui.chrome" | "ui.border" | "ui.selection" | "ui.onAccent" | "wallpaper" | "glass.tint")
 }
 
 fn merge_ui(into: &mut Ui, from: &Ui) {

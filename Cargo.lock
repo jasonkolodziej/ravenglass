@@ -3843,7 +3843,10 @@ version = "0.0.0"
 dependencies = [
  "mail-core",
  "mail-mock",
+ "mail-render",
+ "mail-store",
  "ravenglass-brand",
+ "ravenglass-engine",
  "ravenglass-theme",
  "rune",
 ]

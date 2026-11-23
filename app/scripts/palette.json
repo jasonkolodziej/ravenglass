@@ -1,0 +1,22 @@
+{"events": [
+  {"t": 0.30, "type": "key", "cmd": true, "shift": true, "name": "p"},
+  {"t": 0.70, "type": "type", "text": "theme fr", "every": 0.06},
+  {"t": 1.50, "type": "mark", "name": "filtered"},
+  {"t": 1.70, "type": "key", "name": "Enter"},
+  {"t": 2.60, "type": "mark", "name": "frost"},
+  {"t": 2.80, "type": "type", "text": ":theme night", "every": 0.05},
+  {"t": 3.60, "type": "key", "name": "Enter"},
+  {"t": 4.30, "type": "type", "text": "/from:github", "every": 0.05},
+  {"t": 5.20, "type": "mark", "name": "searching"},
+  {"t": 5.40, "type": "key", "name": "Enter"},
+  {"t": 5.80, "type": "key", "name": "Escape"},
+  {"t": 6.10, "type": "key", "ctrl": true, "name": "w"},
+  {"t": 6.20, "type": "key", "name": "l"},
+  {"t": 6.50, "type": "key", "ctrl": true, "name": "w"},
+  {"t": 6.60, "type": "key", "name": "s"},
+  {"t": 7.20, "type": "mark", "name": "split"},
+  {"t": 7.50, "type": "key", "ctrl": true, "name": "w"},
+  {"t": 7.60, "type": "key", "name": "q"},
+  {"t": 8.00, "type": "key", "name": "2"},
+  {"t": 8.60, "type": "mark", "name": "end"}
+]}

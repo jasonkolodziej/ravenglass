@@ -1,0 +1,103 @@
+//! Headless scenes (plan §5): named states for `--snap`, `--tree` and `--script`. Each starts
+//! from the fully loaded inline state, so one frame shows data.
+
+use crate::actions::Action;
+use crate::modes::Mode;
+use crate::panes::{Axis, Kind, PaneTree};
+use crate::state::AppState;
+use ravenglass_theme::Theme;
+
+type Scene = (&'static str, fn(&mut AppState));
+
+/// The triage view of the previews: the first message selected and open in the reader.
+fn triage(s: &mut AppState) {
+    // Prefer an unread reply-style message near the top, so the reader shows a quoted block.
+    let pick = s.rows().iter().take(8).position(|e| e.is_unread() && crate::demo::is_person(&e.from.email));
+    s.ws_mut().sel = pick.unwrap_or(0);
+    s.open_selected(false);
+}
+
+fn frost(s: &mut AppState) {
+    s.theme = Theme::frost();
+    triage(s);
+}
+
+fn wallpaper(s: &mut AppState) {
+    s.ws_mut().panes = PaneTree::single(Kind::Reader);
+}
+
+fn wallpaper_frost(s: &mut AppState) {
+    s.theme = Theme::frost();
+    wallpaper(s);
+}
+
+/// Run at `--size 800x700`: the layout collapses to the list alone.
+fn narrow(_: &mut AppState) {}
+
+/// The narrow layout after `enter`: the reader alone.
+fn narrow_reader(s: &mut AppState) {
+    s.perform(Action::Open);
+}
+
+fn split_panes(s: &mut AppState) {
+    triage(s);
+    s.ws_mut().panes.focus_kind(Kind::Reader);
+    s.perform(Action::PaneSplit(Axis::Rows));
+    s.perform(Action::PaneFocus(crate::panes::Dir::Up));
+}
+
+fn command_line(s: &mut AppState) {
+    triage(s);
+    s.mode = Mode::Command { line: "theme frost".into() };
+}
+
+fn palette(s: &mut AppState) {
+    triage(s);
+    s.mode = Mode::Palette { query: "pane".into(), selected: 1 };
+}
+
+fn search_results(s: &mut AppState) {
+    let query = "from:github is:unread";
+    s.mode = Mode::Search { query: query.into() };
+    s.search(query.into());
+}
+
+fn empty_inbox(s: &mut AppState) {
+    s.perform(Action::Mailbox("Trash".into()));
+}
+
+fn visual(s: &mut AppState) {
+    for key in ['j', 'v', 'j', 'j'] { s.key(crate::keys::KeyPress::char(key)); }
+}
+
+/// After archiving one message: the undo toast.
+fn undo_toast(s: &mut AppState) {
+    s.perform(Action::Archive);
+}
+
+fn reader_focus(s: &mut AppState) {
+    s.perform(Action::Open);
+}
+
+fn workspace_gmail(s: &mut AppState) {
+    s.perform(Action::Workspace(2));
+}
+
+pub const SCENES: &[Scene] = &[
+    ("default", triage),
+    ("night", triage),
+    ("frost", frost),
+    ("wallpaper", wallpaper),
+    ("wallpaper-frost", wallpaper_frost),
+    ("narrow", narrow),
+    ("narrow-reader", narrow_reader),
+    ("split-panes", split_panes),
+    ("command-line", command_line),
+    ("palette", palette),
+    ("search-results", search_results),
+    ("empty-inbox", empty_inbox),
+    ("visual", visual),
+    ("undo-toast", undo_toast),
+    ("reader-focus", reader_focus),
+    ("workspace-gmail", workspace_gmail),
+];

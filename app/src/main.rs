@@ -1,77 +1,109 @@
-//! Ravenglass — M0 starting point (plan §6).
+//! Ravenglass: a character-grid mail client on Rune (plan §4).
 //!
-//! What this does: opens a window in the Night theme and draws the braille raven wallpaper with
-//! the empty-pane hint lines (plan §4 "Brand"). It is the first thing to get compiling.
-//! Compiles against Rune at rev 0ca07561 on Rust 1.99.1; the snapshots below render.
-//!
-//! Run:       cargo run
-//! Headless:  cargo run -- --snap out/wallpaper.png --size 1400x880 --scale 2
-//!            cargo run -- --snap out/frost.png --scene frost
-//!            cargo run -- --tree out/tree.json
+//! Run:       cargo run -p ravenglass
+//! Headless:  cargo run -p ravenglass -- --snap out/default.png --scene default --size 1400x880 --scale 2
+//!            cargo run -p ravenglass -- --snap out/narrow.png --scene narrow --size 800x700 --scale 2
+//!            cargo run -p ravenglass -- --tree out/tree.json --scene default
+//!            cargo run -p ravenglass -- --script app/scripts/triage.json --out out/triage/
+//!            cargo run -p ravenglass -- --list-scenes
 
-use ravenglass_brand::{Dot, FieldSpec, cols_for, dot_field};
-use ravenglass_theme::{Rgb, Theme};
-use rune::tok::TextStyle;
-use rune::{AppSpec, Color, Cx, El, col, el, text};
+mod actions;
+mod demo;
+mod fold;
+mod grid;
+mod keys;
+mod link;
+mod modes;
+mod panes;
+mod scenes;
+mod state;
+mod timefmt;
+mod update;
+mod view;
 
-const WALLPAPER_ROWS: u32 = 26;
+#[cfg(test)]
+mod tests;
 
-struct State {
-    theme: Theme,
-    dots: Vec<Dot>,
+use keys::KeyPress;
+use rune::{AppSpec, KeyEvent, Tx, Waker};
+use state::{AppState, Boot, Fx};
+use std::time::Duration;
+
+/// The window's size before the first layout, in points.
+pub const WINDOW: [f32; 2] = [1400.0, 880.0];
+
+/// IBM Plex Mono, the UI font: everything is drawn in it, so it fills both of Rune's font slots.
+pub const FONTS: &[&[u8]] = &[
+    include_bytes!("../../assets/fonts/IBMPlexMono-Regular.ttf"),
+    include_bytes!("../../assets/fonts/IBMPlexMono-Medium.ttf"),
+];
+pub const FAMILIES: (&str, &str) = ("IBM Plex Mono", "IBM Plex Mono");
+
+fn init() -> AppState {
+    // Headless runs load everything inline so the first frame already shows mail.
+    if rune::tooling::is_headless() { AppState::demo_inline() } else { AppState::windowed() }
 }
 
-impl State {
-    fn new() -> Self {
-        Self { theme: Theme::night(), dots: dot_field(FieldSpec { rows: WALLPAPER_ROWS, facets: true }) }
+fn setup(s: &mut AppState, waker: Waker) { s.waker = Some(waker); }
+
+/// Carry out what state changes asked of the window.
+pub fn flush(s: &mut AppState, tx: &mut Tx) {
+    for fx in std::mem::take(&mut s.fx) {
+        match fx {
+            Fx::Reveal(key) => tx.scroll_into_view(key),
+            Fx::ScrollRows(key, rows) => tx.scroll_to(key, 0.0, s.frame.get().grid.y(rows)),
+            Fx::ScrollTop(key) => tx.scroll_to_y(key, 0.0),
+            Fx::WakeAt(due) => tx.wake_at(due),
+            Fx::ThemeChanged => tx.color_motion(rune::tok::motion::CALM),
+            Fx::Quit => tx.quit(),
+        }
     }
 }
 
-/// Theme colours are sRGB hex; Rune's `color::hex` returns its linear `Color`.
-fn c(rgb: Rgb) -> Color {
-    rune::color::hex(&rgb.hex()).unwrap_or(Color::WHITE)
-}
-
-/// The cell grid (plan §4 "The grid"). TODO(M2): measure the real advance of `0` in IBM Plex Mono
-/// at the theme's size and round to device pixels; keep it in state.
-struct Grid { cell_w: f32, cell_h: f32 }
-const GRID: Grid = Grid { cell_w: 8.4, cell_h: 19.0 };
-
-/// The braille raven: one small circle per dot on the 2×4-dots-per-cell grid.
-/// TODO(M2): draw with `El::shape`/`canvas(Shape)` (one element, not thousands) and add the intro
-/// (dots spring in from scattered positions on first open; skipped under Reduce Motion).
-fn wallpaper(s: &State) -> El {
-    let t = &s.theme;
-    let (pitch_x, pitch_y) = (GRID.cell_w / 2.0, GRID.cell_h / 4.0);
-    let d = pitch_x.min(pitch_y) * 0.62;
-    let (w, h) = (cols_for(WALLPAPER_ROWS) as f32 * GRID.cell_w, WALLPAPER_ROWS as f32 * GRID.cell_h);
-    let ink = c(t.role("wallpaper"));
-    let eye = c(t.role("ui.accent"));
-    let opacity = t.ui.wallpaper_opacity.unwrap_or(0.85);
-    let mut field = el().key("wallpaper").size(w, h).inert().opacity(opacity);
-    for dot in &s.dots {
-        let (x, y) = (dot.x as f32 * pitch_x + (pitch_x - d) / 2.0, dot.y as f32 * pitch_y + (pitch_y - d) / 2.0);
-        field = field.child(el().size(d, d).radius(d / 2.0).fill(if dot.eye { eye } else { ink }).absolute(x, y));
+fn poll(s: &mut AppState, clock: f64, tx: &mut Tx) -> bool {
+    let mut changed = s.tick(clock);
+    match s.boot {
+        // The engine starts once the first frame is out.
+        Boot::Cold => {
+            s.boot = Boot::Armed;
+            tx.wake_after(Duration::from_millis(1));
+        }
+        Boot::Armed => {
+            s.start_engine();
+            changed = true;
+        }
+        Boot::Started => {}
     }
-    field
+    if s.pump() {
+        // Mail that lands just after launch should not animate in.
+        if clock < 1.0 { tx.instant(); }
+        changed = true;
+    }
+    flush(s, tx);
+    changed
 }
 
-fn view(s: &State, _cx: &mut Cx<State>) -> El {
-    let t = &s.theme;
-    let mono = TextStyle::new(14.0, 400.0).mono();
-    col().key("pane").w_full().h_full().center().gap(14.0).fill(c(t.role("ui.bg")))
-        .child(wallpaper(s))
-        .child(text("R A V E N G L A S S").font(TextStyle::new(14.0, 600.0).mono()).color(c(t.role("ui.text"))))
-        .child(text("No message open").font(mono).color(c(t.role("ui.muted"))))
-        .child(text("/ search    ⇧⌘P commands    1–9 workspaces    c compose").font(mono).color(c(t.role("ui.muted"))))
+fn on_key(s: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    s.clock = tx.clock();
+    let Some(press) = KeyPress::from_event(ev) else { return false };
+    let acted = s.key(press);
+    flush(s, tx);
+    acted
+}
+
+pub fn spec() -> AppSpec<AppState> {
+    AppSpec::<AppState> {
+        scenes: scenes::SCENES,
+        fonts: FONTS,
+        families: FAMILIES,
+        setup: Some(setup),
+        poll: Some(poll),
+        on_key: Some(on_key),
+        min_size: Some((480.0, 320.0)),
+        ..AppSpec::new("Ravenglass", (WINDOW[0], WINDOW[1]), init, view::root)
+    }
 }
 
 fn main() {
-    rune::run(AppSpec::<State> {
-        scenes: &[
-            ("night", |s| s.theme = Theme::night()),
-            ("frost", |s| s.theme = Theme::frost()),
-        ],
-        ..AppSpec::new("Ravenglass", (1400.0, 880.0), State::new, view)
-    });
+    rune::run(spec());
 }
