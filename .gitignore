@@ -161,3 +161,6 @@ __pycache__/
 /target
 /out
 *.png.tmp
+
+# Spike crates build outside the root workspace
+/spikes/**/target

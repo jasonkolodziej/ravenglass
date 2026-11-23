@@ -1,0 +1,32 @@
+[package]
+name = "blitz-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Throwaway: kept out of the root workspace until the spike's questions are answered.
+[workspace]
+
+[dependencies]
+rune = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8", features = ["tooling"] }
+blitz-dom = "=0.3.0-beta.4"
+blitz-html = "=0.3.0-beta.4"
+blitz-paint = "=0.3.0-beta.4"
+blitz-traits = "=0.3.0-beta.4"
+anyrender = "0.14"
+anyrender_vello_cpu = "0.18"
+png = "0.17"
+mail-render = { path = "../../../crates/mail-render" }
+mail-core = { path = "../../../crates/mail-core" }
+
+[patch.crates-io]
+winit             = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
+parley_engine     = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
+wgpu-hal          = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
+
+# Blitz turns on taffy's `flexbox_balance` feature, which adds two `FlexWrap` variants that
+# rune-taffy's exhaustive match does not cover at this rev (see ../REPORT.md). The vendored copy
+# is rune-taffy at the pinned rev plus a catch-all arm in `encode_wrap`.
+[patch."https://github.com/anomalyco/rune"]
+rune-taffy = { path = "../vendor/rune-taffy" }

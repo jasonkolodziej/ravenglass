@@ -13,7 +13,9 @@ Checked with Rust 1.99.1 on Linux: `cargo test --workspace` passes (60 tests) an
 - `relay-proto`, `relay-client`, `ravenglass-relay`: the Relay API and both ends of it, tested against each other in-process.
 - `ravenglass-theme`, `ravenglass-brand`: themes and the raven dot field.
 
-**Not started:** the grid UI (M2), the Blitz spike and `mail-blitz`, `mail-imap`, `mail-jmap`, `mail-auth`, the Relay server, and the wasm build. Nothing has been built on macOS or Windows yet; the `Rust` workflow will be the first to try.
+**Blitz spike:** done, verdict go; read `spikes/blitz/REPORT.md` (one build fix to Rune's `rune-taffy` is needed before Blitz links next to the app).
+
+**Not started:** the grid UI (M2), `mail-blitz`, `mail-imap`, `mail-jmap`, `mail-auth`, the Relay server, and the wasm build. Nothing has been built on macOS or Windows yet; the `Rust` workflow will be the first to try.
 
 ## 1. Set up
 ```sh
