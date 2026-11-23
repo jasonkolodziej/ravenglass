@@ -168,7 +168,12 @@ start() {
     dir="$(mktemp -d "${TMPDIR:-/tmp}/ravenglass-dovecot.XXXXXX")"
     configure "$dir"
     echo "$dir" >"$POINTER"
-    "$dovecot" -c "$dir/dovecot.conf" </dev/null >/dev/null 2>&1
+    # Dovecot reports start-up failures on stderr before its log exists: keep them.
+    if ! "$dovecot" -c "$dir/dovecot.conf" </dev/null >"$dir/start.out" 2>&1; then
+        echo "dovecot refused to start:" >&2
+        cat "$dir/start.out" >&2
+        exit 1
+    fi
     for _ in $(seq 1 50); do
         if (exec 3<>"/dev/tcp/127.0.0.1/$IMAP_PORT") 2>/dev/null; then
             echo "started from $dir (IMAP STARTTLS $IMAP_PORT, IMAPS $IMAPS_PORT), log in $dir/dovecot.log" >&2
@@ -177,6 +182,7 @@ start() {
         sleep 0.1
     done
     echo "dovecot did not start; see $dir/dovecot.log" >&2
+    cat "$dir/start.out" "$dir/dovecot.log" >&2 2>/dev/null || true
     exit 1
 }
 

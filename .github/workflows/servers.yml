@@ -25,6 +25,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y dovecot-imapd libfontconfig1-dev zstd
           sudo systemctl disable --now dovecot || true
+          # Ubuntu's AppArmor profiles for Dovecot only allow its packaged paths; the test server
+          # runs from a temp folder, so unload them for this job.
+          for profile in /etc/apparmor.d/*dovecot*; do
+            [ -f "$profile" ] && sudo apparmor_parser -R "$profile" 2>/dev/null || true
+          done
       - uses: dtolnay/rust-toolchain@master
         with: { toolchain: "1.99.1", components: "clippy" }
       - uses: Swatinem/rust-cache@v2
