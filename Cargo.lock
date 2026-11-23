@@ -3848,6 +3848,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ravenglass-accounts"
+version = "0.0.0"
+dependencies = [
+ "mail-auth",
+ "mail-core",
+ "mail-imap",
+ "mail-jmap",
+ "thiserror 2.0.21",
+ "ureq",
+]
+
+[[package]]
 name = "ravenglass-brand"
 version = "0.0.0"
 
