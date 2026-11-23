@@ -15,3 +15,15 @@ mail-core = { path = "../mail-core" }
 serde_json.workspace = true
 ureq = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
+
+[dev-dependencies]
+# tests/stalwart.rs: a real JMAP server, set up with mail-imap's test helpers (tests/real), and
+# the engine end to end.
+mail-imap = { path = "../mail-imap" }
+tokio-rustls.workspace = true
+ravenglass-engine = { path = "../ravenglass-engine" }
+mail-store = { path = "../mail-store" }
+
+[[test]]
+name = "stalwart"
+required-features = ["http"]

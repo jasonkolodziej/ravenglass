@@ -2635,7 +2635,11 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "mail-core",
+ "mail-imap",
+ "mail-store",
+ "ravenglass-engine",
  "serde_json",
+ "tokio-rustls",
  "ureq",
 ]
 
