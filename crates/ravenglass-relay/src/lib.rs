@@ -25,6 +25,10 @@ pub mod hub;
 #[cfg(feature = "server")]
 pub mod imgproxy;
 #[cfg(feature = "server")]
+pub mod jose;
+#[cfg(feature = "server")]
+pub mod jwks;
+#[cfg(feature = "server")]
 pub mod oidc;
 #[cfg(feature = "server")]
 pub mod outbound;

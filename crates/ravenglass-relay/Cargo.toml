@@ -13,6 +13,7 @@ server = [
     "dep:axum", "dep:tokio", "dep:aes-gcm", "dep:hkdf", "dep:sha2", "dep:argon2", "dep:getrandom", "dep:base64",
     "dep:subtle", "dep:url", "dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:tokio-rustls", "dep:webpki-roots",
     "dep:rusqlite", "dep:toml", "dep:mail-auth", "dep:ravenglass-accounts",
+    "dep:rsa", "dep:p256", "dep:p384", "dep:ed25519-dalek",
 ]
 
 [[bin]]
@@ -44,6 +45,10 @@ rusqlite = { workspace = true, optional = true }
 toml = { workspace = true, optional = true }
 mail-auth = { path = "../mail-auth", optional = true }
 ravenglass-accounts = { path = "../ravenglass-accounts", optional = true }
+rsa = { workspace = true, optional = true }
+p256 = { workspace = true, optional = true }
+p384 = { workspace = true, optional = true }
+ed25519-dalek = { workspace = true, optional = true }
 
 mail-mock = { path = "../mail-mock" }
 
@@ -54,3 +59,9 @@ mail-store = { path = "../mail-store" }
 ureq.workspace = true
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
+# Test keys and signatures for the fake identity provider.
+rsa = { workspace = true, features = ["getrandom"] }
+p256 = { workspace = true }
+p384 = { workspace = true }
+ed25519-dalek = { workspace = true }
+getrandom = { workspace = true, features = ["sys_rng"] }
