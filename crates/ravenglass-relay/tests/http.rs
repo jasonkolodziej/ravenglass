@@ -76,3 +76,36 @@ fn only_the_configured_origin_gets_cors_headers() {
     assert_eq!(get(ORIGIN), (200, Some(ORIGIN.to_owned())));
     assert_eq!(get("https://evil.example"), (200, None), "another site's page cannot read the answer");
 }
+
+#[test]
+fn token_mode_sends_security_headers_and_says_which_mode_it_is() {
+    let (base, _) = start();
+    let agent = ureq::Agent::new_with_config(ureq::Agent::config_builder().http_status_as_error(false).build());
+    let config = agent.get(format!("{base}/v1/auth/config")).call().unwrap().body_mut().read_to_string().unwrap();
+    assert_eq!(config, r#"{"mode":"token","password":false,"oidc":false}"#);
+    let answer = agent.get(format!("{base}/v1/accounts/iCloud/folders")).header("authorization", format!("Bearer {TOKEN}")).header("ravenglass-relay-version", "1").header("origin", ORIGIN).call().unwrap();
+    let header = |n: &str| answer.headers().get(n).map(|v| v.to_str().unwrap().to_owned());
+    assert!(header("content-security-policy").unwrap().starts_with("default-src 'none'"));
+    assert_eq!(header("x-content-type-options").as_deref(), Some("nosniff"));
+    assert_eq!(header("referrer-policy").as_deref(), Some("no-referrer"));
+    assert_eq!(header("access-control-allow-credentials").as_deref(), Some("true"));
+    let status = |path: &str, auth: bool| {
+        let mut request = agent.get(format!("{base}{path}"));
+        if auth { request = request.header("authorization", format!("Bearer {TOKEN}")); }
+        request.call().unwrap().status().as_u16()
+    };
+    assert_eq!(status("/v1/img?u=http%3A%2F%2F127.0.0.1%2Fa.png", false), 401, "the image proxy needs the token");
+    assert_eq!(status("/v1/img?u=http%3A%2F%2F127.0.0.1%2Fa.png", true), 403, "and refuses internal addresses");
+    assert_eq!(status("/v1/me/accounts", true), 404, "token mode has no per-user accounts");
+    assert_eq!(status("/v1/auth/session", true), 404);
+}
+
+#[test]
+fn the_push_socket_takes_the_token_as_a_query_parameter() {
+    let (base, _) = start();
+    let host = base.trim_start_matches("http://");
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    let token = relay_proto::segment(TOKEN);
+    assert!(runtime.block_on(tokio_tungstenite::connect_async(format!("ws://{host}/v1/events?access_token={token}"))).is_ok());
+    assert!(runtime.block_on(tokio_tungstenite::connect_async(format!("ws://{host}/v1/events?access_token=wrong"))).is_err());
+}
