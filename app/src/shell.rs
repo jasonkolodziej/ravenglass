@@ -330,7 +330,7 @@ impl AppState {
                 match result {
                     Ok(()) => {
                         self.shell.accounts.retain(|a| a.id != id);
-                        self.toast(if cache_cleared { format!("account {id} removed, with its secrets and the mail cache") } else { format!("account {id} and its secrets removed · its cached mail stays until the last account goes") });
+                        self.toast(if cache_cleared { format!("account {id} removed, with its secrets and the mail cache") } else { format!("account {id} and its secrets removed · its cached mail could not be cleared") });
                     }
                     Err(reason) => self.error(format!("account {id}: {reason}")),
                 }

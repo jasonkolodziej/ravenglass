@@ -75,7 +75,12 @@ pub fn run(job: Job, ctx: &Ctx, emit: &mut dyn FnMut(JobDone)) {
             let saved = match &ctx.profile { Some(profile) => profile.save_accounts(&remaining), None => Ok(()) };
             let mut cache_cleared = false;
             let result = saved.and_then(|()| {
-                cache_cleared = remaining.is_empty() && ctx.profile.as_ref().is_some_and(|p| p.remove_store().is_ok());
+                cache_cleared = match &ctx.profile {
+                    // The last account takes the whole cache file with it; otherwise only its own rows go.
+                    Some(profile) if remaining.is_empty() => profile.remove_store().is_ok(),
+                    Some(profile) => mail_store::Store::open(&profile.store_file().to_string_lossy()).and_then(|mut store| store.remove_account(&id)).is_ok(),
+                    None => false,
+                };
                 ctx.services.secrets.delete_all(&id).map_err(|e| e.to_string())
             });
             emit(JobDone::Removed { id, result, cache_cleared });
