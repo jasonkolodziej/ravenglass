@@ -44,7 +44,8 @@ pub fn raven_rows(area: Rect) -> Option<u32> {
     (rows >= MIN_ROWS).then_some(rows)
 }
 
-pub fn pane(ui: &Ui, area: Rect, caption: &str, hints: &str) -> El {
+/// `id` names the pane, so each wallpaper keeps its own memoized raven.
+pub fn pane(ui: &Ui, id: &str, area: Rect, caption: &str, hints: &str) -> El {
     let g = &ui.g;
     let p = &ui.p;
     let mut e = el().key("wallpaper").size(g.x(area.w), g.y(area.h)).inert();
@@ -53,15 +54,21 @@ pub fn pane(ui: &Ui, area: Rect, caption: &str, hints: &str) -> El {
     let top = area.h.saturating_sub(raven_h + TEXT_ROWS - 1) / 2;
     if let Some(rows) = raven {
         let cols = cols_for(rows) as usize;
-        let (pitch_x, pitch_y) = (g.cell_w / 2.0, g.cell_h / 4.0);
-        let d = pitch_x.min(pitch_y) * 0.56;
-        let mut shape = Shape::new();
-        for dot in field(rows).iter() {
-            let (x, y) = ((dot.x as f32 + 0.5) * pitch_x, (dot.y as f32 + 0.5) * pitch_y);
-            shape = shape.line([x - 0.01, y], [x + 0.01, y], d, LineCap::Round, if dot.eye { p.accent } else { p.wallpaper });
-        }
         let x = area.w.saturating_sub(cols) / 2;
-        e = e.child(canvas(shape).key("raven").absolute(g.x(x), g.y(top)).size(g.x(cols), g.y(rows as usize)).opacity(ui.wallpaper_opacity).inert());
+        let (ink, eye, opacity) = (p.wallpaper, p.accent, ui.wallpaper_opacity);
+        // A few thousand dots: built once per size and theme, not on every view run.
+        let version = (rows, x, top, g.cell_w.to_bits(), g.cell_h.to_bits(), ink.hex(), eye.hex(), opacity.to_bits());
+        let g = *g;
+        e = e.child(rune::memo(format!("raven:{id}"), version, move || {
+            let (pitch_x, pitch_y) = (g.cell_w / 2.0, g.cell_h / 4.0);
+            let d = pitch_x.min(pitch_y) * 0.56;
+            let mut shape = Shape::new();
+            for dot in field(rows).iter() {
+                let (x, y) = ((dot.x as f32 + 0.5) * pitch_x, (dot.y as f32 + 0.5) * pitch_y);
+                shape = shape.line([x - 0.01, y], [x + 0.01, y], d, LineCap::Round, if dot.eye { eye } else { ink });
+            }
+            canvas(shape).key("raven").absolute(g.x(x), g.y(top)).size(g.x(cols), g.y(rows as usize)).opacity(opacity).inert()
+        }));
     }
     let centred = |text: &str, row: usize, line: Line| {
         let width = grid::width(text).min(area.w);

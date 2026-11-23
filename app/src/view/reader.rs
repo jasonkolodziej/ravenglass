@@ -39,7 +39,7 @@ pub fn pane(s: &AppState, ui: &Rc<Ui>, pane: u32, area: Rect) -> El {
     let g = &ui.g;
     let p = &ui.p;
     let ws = s.ws();
-    let Some(env) = &ws.open else { return wallpaper::pane(ui, area, "No message open", &wallpaper::hints()) };
+    let Some(env) = &ws.open else { return wallpaper::pane(ui, &AppState::reader_key(pane), area, "No message open", &wallpaper::hints()) };
     let body = s.body();
     let cols = area.w;
     let inner = cols.saturating_sub(2 * PAD);

@@ -133,7 +133,7 @@ pub fn root(s: &AppState, cx: &mut Cx<AppState>) -> El {
     let several = layout.panes.len() > 1;
 
     let mut root = el().key(ROOT).w_full().h_full().fill(ui.p.bg);
-    root = root.child(tabs::bar(s, &ui, chrome.cols));
+    root = root.child(tabs::bar(s, &ui, chrome.cols, cx.titlebar_inset()));
     for pane in &layout.panes {
         root = root.child(pane_view(s, &ui, pane, pane.id == ws.panes.focus(), several));
     }
@@ -179,7 +179,7 @@ fn pane_view(s: &AppState, ui: &Rc<Ui>, pane: &Placed, focused: bool, several: b
     let body = match pane.kind {
         Kind::List => list::pane(s, ui, pane.id, content),
         Kind::Reader => reader::pane(s, ui, pane.id, content),
-        Kind::Empty => wallpaper::pane(ui, content, "Empty pane", &wallpaper::hints()),
+        Kind::Empty => wallpaper::pane(ui, &format!("pane:{}", pane.id), content, "Empty pane", &wallpaper::hints()),
     };
     let role = match pane.kind { Kind::List => "list pane", Kind::Reader => "reader pane", Kind::Empty => "empty pane" };
     let mut e = ui.place(el().key(format!("pane:{}", pane.id)).role("region").label(role), r).child(body);

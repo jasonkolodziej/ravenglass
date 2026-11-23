@@ -171,7 +171,9 @@ fn everything_sits_on_the_cell_grid() {
 fn enter_opens_the_message_in_the_reader_and_the_tab_follows() {
     let mut rt = runtime();
     assert!(keyed(&rt.elements(), "wallpaper").is_some(), "an empty reader shows the wallpaper");
-    assert!(keyed(&rt.elements(), "raven").is_some(), "drawn as one canvas");
+    let ravens = rt.elements().iter().filter(|e| e.key.as_deref().is_some_and(|k| k.starts_with("raven"))).count();
+    assert_eq!(ravens, 1, "the raven is one canvas element");
+    assert!(rt.elements().len() < 400, "not an element per dot: {} elements", rt.elements().len());
     let subject = rt.state.selected().unwrap().subject.clone();
     press(&mut rt, Key::Enter);
     settle(&mut rt);
@@ -184,6 +186,31 @@ fn enter_opens_the_message_in_the_reader_and_the_tab_follows() {
     // The status line moved to the focused pane.
     let (status, reader) = (keyed(&els, "status").unwrap(), keyed(&els, "pane:2").unwrap());
     assert!(status.rect[0] >= reader.rect[0] - 0.5);
+}
+
+#[test]
+fn j_and_k_scroll_the_reader_by_whole_rows_within_its_extent() {
+    // A short window, so the message is taller than the reader.
+    let mut rt = runtime_with(AppState::demo_inline(), (1400.0, 260.0));
+    let g = rt.state.frame.get().grid;
+    press(&mut rt, Key::Enter);
+    settle(&mut rt);
+    let extent = rt.state.ws().reader_extent.get();
+    assert!(extent > 0, "the body overflows the pane");
+    let top = |rt: &Runtime<AppState>| keyed(&rt.elements(), "reader-from").map(|e| e.rect[1]);
+    let start = top(&rt).expect("the header is on screen");
+    type_keys(&mut rt, "j");
+    settle(&mut rt);
+    assert_eq!(rt.state.ws().reader_top, 3.min(extent));
+    let moved = start - top(&rt).expect("still mounted");
+    assert!((moved - g.y(3.min(extent))).abs() < 0.5, "scrolled {moved} pt");
+    type_keys(&mut rt, "G");
+    settle(&mut rt);
+    assert_eq!(rt.state.ws().reader_top, extent, "G stops at the end");
+    type_keys(&mut rt, "gg");
+    settle(&mut rt);
+    assert_eq!(rt.state.ws().reader_top, 0);
+    assert!((top(&rt).unwrap() - start).abs() < 0.5, "back at the top");
 }
 
 #[test]

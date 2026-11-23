@@ -8,8 +8,8 @@ use crate::panes::Kind;
 use crate::state::{AppState, Source};
 use rune::{El, el};
 
-/// Cells kept clear for the window buttons, where the platform draws them inside the content.
-const INSET_COLS: usize = if cfg!(target_os = "macos") { 10 } else { 2 };
+/// Cells before the first tab when the platform draws no window buttons inside the content.
+const INSET_COLS: usize = 2;
 const TAB_MAX: usize = 36;
 
 /// The tabs of the active workspace: (title, the pane kind it focuses).
@@ -25,11 +25,13 @@ pub fn titles(s: &AppState) -> Vec<(String, Kind)> {
     out
 }
 
-pub fn bar(s: &AppState, ui: &Ui, cols: usize) -> El {
+/// `inset` is the width in points the platform's window buttons take at the left of the title
+/// bar (macOS traffic lights under a full-size content view), or 0.
+pub fn bar(s: &AppState, ui: &Ui, cols: usize, inset: f32) -> El {
     let g = &ui.g;
     let active = if s.ws().open.is_some() && s.focused_kind() == Kind::Reader { 1 } else { 0 };
-    let mut bar = el().key("tabs").role("tablist").absolute(0.0, 0.0).size(g.x(cols), g.y(BAR_ROWS));
-    let mut col = INSET_COLS;
+    let mut bar = el().key("tabs").role("tablist").absolute(0.0, 0.0).size(g.x(cols), g.y(BAR_ROWS)).window_drag();
+    let mut col = if inset > 0.0 { (inset / g.cell_w).ceil() as usize + 3 } else { INSET_COLS };
     for (i, (title, kind)) in titles(s).into_iter().enumerate() {
         let title = grid::clip(&title, TAB_MAX);
         let ink = if i == active { ui.p.text } else { ui.p.muted };

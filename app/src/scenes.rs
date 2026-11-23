@@ -23,7 +23,7 @@ fn frost(s: &mut AppState) {
 }
 
 fn wallpaper(s: &mut AppState) {
-    s.ws_mut().panes = PaneTree::single(Kind::Empty);
+    s.ws_mut().panes = PaneTree::single(Kind::Reader);
 }
 
 fn wallpaper_frost(s: &mut AppState) {

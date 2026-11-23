@@ -38,7 +38,7 @@ pub fn pane(s: &AppState, ui: &Rc<Ui>, pane: u32, area: Rect) -> El {
             None => "No messages",
         };
         let body = Rect::new(0, HEAD_ROWS, area.w, area.h.saturating_sub(HEAD_ROWS));
-        return e.child(wallpaper::pane(ui, body, caption, &wallpaper::hints()).absolute(0.0, g.y(HEAD_ROWS)));
+        return e.child(wallpaper::pane(ui, &AppState::list_key(pane), body, caption, &wallpaper::hints()).absolute(0.0, g.y(HEAD_ROWS)));
     }
     let (ui2, cols) = (ui.clone(), area.w);
     let list = col()
