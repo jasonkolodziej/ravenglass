@@ -133,7 +133,12 @@ namespace inbox {
   }
 }
 
+# No chroot: an unprivileged Dovecot (a CI runner) cannot chroot.
+service anvil {
+  chroot =
+}
 service imap-login {
+  chroot =
   inet_listener imap {
     address = 127.0.0.1
     port = $IMAP_PORT

@@ -170,3 +170,6 @@ __pycache__/
 
 # GreenMail jar, test certificate and logs (tools/greenmail.sh)
 /tools/.cache/
+# The Stalwart binary and the Dovecot/Stalwart temp-dir pointers (tools/stalwart.sh, tools/dovecot.sh)
+/tools/.cache/stalwart-*
+/tools/.cache/*.dir

@@ -1,0 +1,51 @@
+name: Mail servers
+# The IMAP, SMTP and JMAP backends and ravenglass-check against real server software:
+# Dovecot (from apt) and Stalwart (a pinned release, checked by sha256). See tools/README.md.
+on:
+  push:
+    branches: [main]
+    paths: ["crates/mail-*/**", "crates/ravenglass-check/**", "crates/ravenglass-engine/**", "tools/dovecot.sh", "tools/stalwart.sh", "Cargo.lock", ".github/workflows/servers.yml"]
+  pull_request:
+    paths: ["crates/mail-*/**", "crates/ravenglass-check/**", "crates/ravenglass-engine/**", "tools/dovecot.sh", "tools/stalwart.sh", "Cargo.lock", ".github/workflows/servers.yml"]
+  workflow_dispatch:
+
+jobs:
+  servers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      RAVENGLASS_DOVECOT_TEST: "1"
+      RAVENGLASS_STALWART_TEST: "1"
+    steps:
+      - uses: actions/checkout@v4
+      # Dovecot runs unprivileged from tools/dovecot.sh; the packaged service is not needed.
+      # The engine tests link the HTML renderer, which looks fonts up through fontconfig.
+      - name: Install Dovecot
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dovecot-imapd libfontconfig1-dev zstd
+          sudo systemctl disable --now dovecot || true
+      - uses: dtolnay/rust-toolchain@master
+        with: { toolchain: "1.99.1", components: "clippy" }
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with: { path: tools/.cache/stalwart-*, key: "stalwart-1.0.3" }
+      - name: Start the servers
+        run: |
+          tools/dovecot.sh start
+          tools/stalwart.sh start
+      - run: cargo clippy -p mail-imap -p mail-jmap -p ravenglass-check --all-targets -- -D warnings
+      - run: cargo test -p mail-imap --test dovecot --test stalwart -- --nocapture
+      - run: cargo test -p mail-jmap --features http -- --nocapture
+      - run: cargo test -p ravenglass-check
+      - name: Server logs
+        if: failure()
+        run: |
+          tail -n 200 "$(cat tools/.cache/dovecot.dir)/dovecot.log" || true
+          tail -n 200 "$(cat tools/.cache/stalwart.dir)/stalwart.log" || true
+      - name: Stop the servers
+        if: always()
+        run: |
+          tools/stalwart.sh stop || true
+          tools/dovecot.sh stop || true
