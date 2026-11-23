@@ -334,17 +334,64 @@ async fn append(inner: &Inner, conn: &mut Conn, mailbox: &str, flags: &str, raw:
 
 pub async fn append_draft(inner: &Inner, conn: &mut Conn, raw: &[u8]) -> Outcome<MessageId> {
     let mailbox = role_mailbox(inner, conn, FolderRole::Drafts, "Drafts").await?;
-    let before = conn.select(&mailbox).await?;
+    append_into(inner, conn, &mailbox, "(\\Draft \\Seen)", raw).await
+}
+
+/// APPEND to `mailbox` and find the new message's id.
+async fn append_into(inner: &Inner, conn: &mut Conn, mailbox: &str, flags: &str, raw: &[u8]) -> Outcome<MessageId> {
+    let before = conn.select(mailbox).await?;
     let floor = before.uid_next.unwrap_or(1).max(1);
-    append(inner, conn, &mailbox, "(\\Draft \\Seen)", raw).await?;
+    append(inner, conn, mailbox, flags, raw).await?;
     // async-imap does not surface APPENDUID, so look for what arrived at or after the old UIDNEXT.
     conn.run("NOOP", |_| {}).await?;
     let uid = search(conn, &format!("UID {floor}:*")).await?.into_iter().rfind(|uid| *uid >= floor)
-        .ok_or_else(|| Failure::from(MailError::Server("the draft was saved but the server did not list it".into())))?;
-    Ok(message_id(&folder_id(&inner.config.account, &mailbox), before.validity, uid))
+        .ok_or_else(|| Failure::from(MailError::Server("the message was saved but the server did not list it".into())))?;
+    Ok(message_id(&folder_id(&inner.config.account, mailbox), before.validity, uid))
 }
 
 pub async fn append_sent(inner: &Inner, conn: &mut Conn, raw: &[u8]) -> Outcome<()> {
     let mailbox = role_mailbox(inner, conn, FolderRole::Sent, "Sent").await?;
     append(inner, conn, &mailbox, "(\\Seen)", raw).await
+}
+
+/// The newest `limit` messages of a folder, newest first, and how many it holds. Read-only: the
+/// folder is opened with EXAMINE and bodies are only peeked at.
+pub async fn newest(inner: &Inner, conn: &mut Conn, folder: &FolderId, limit: u32) -> Outcome<(Vec<Envelope>, u32)> {
+    let mailbox = mailbox_of(&inner.config.account, folder)?;
+    let examined = conn.examine(mailbox).await?;
+    if examined.exists == 0 || limit == 0 { return Ok((Vec::new(), examined.exists)); }
+    // Sequence numbers count from the oldest, so the newest are the last `limit` of them.
+    let first = examined.exists.saturating_sub(limit) + 1;
+    let mut uids = Vec::new();
+    conn.run(&format!("FETCH {first}:* (UID)"), |response| if let Some(Item { uid: Some(uid), .. }) = item(response) { uids.push(uid); }).await?;
+    let Some(lowest) = uids.iter().min().copied() else { return Ok((Vec::new(), examined.exists)) };
+    let mut found = fetch_envelopes(inner, conn, folder, examined.validity, &format!("{lowest}:*"), lowest).await?;
+    found.sort_by_key(|(uid, _)| std::cmp::Reverse(*uid));
+    Ok((found.into_iter().map(|(_, envelope)| envelope).collect(), examined.exists))
+}
+
+/// CREATE a mailbox (an ASCII name) and return its folder id.
+pub async fn create_folder(inner: &Inner, conn: &mut Conn, name: &str) -> Outcome<FolderId> {
+    if !name.is_ascii() || name.contains('&') { return Err(MailError::Server("folder names here are plain ASCII".into()).into()); }
+    conn.run(&format!("CREATE {}", quote(name)?), |_| {}).await?;
+    *inner.folders.lock().unwrap() = None;
+    Ok(folder_id(&inner.config.account, name))
+}
+
+/// DELETE a mailbox and everything in it.
+pub async fn delete_folder(inner: &Inner, conn: &mut Conn, folder: &FolderId) -> Outcome<()> {
+    let mailbox = quote(mailbox_of(&inner.config.account, folder)?)?;
+    conn.deselect();
+    // Some servers refuse to delete the selected mailbox; selecting another is harmless.
+    let _ = conn.examine("INBOX").await;
+    conn.run(&format!("DELETE {mailbox}"), |_| {}).await?;
+    conn.deselect();
+    *inner.folders.lock().unwrap() = None;
+    Ok(())
+}
+
+/// APPEND `raw` to a folder with these flags.
+pub async fn append_to(inner: &Inner, conn: &mut Conn, folder: &FolderId, raw: &[u8], flags: Flags) -> Outcome<MessageId> {
+    let mailbox = mailbox_of(&inner.config.account, folder)?.to_owned();
+    append_into(inner, conn, &mailbox, &envelope::flag_list(flags).unwrap_or_else(|| "()".into()), raw).await
 }

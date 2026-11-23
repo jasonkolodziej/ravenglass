@@ -11,7 +11,7 @@
 # Ports (loopback only): 3144 IMAP with STARTTLS, 3994 IMAP over implicit TLS. Dovecot counts
 # loopback as secure, so 3144 also takes a login without TLS; the command-recording tests use that.
 # Accounts are passwd-files, one per user, in <dir>/users/ (file name = login, password
-# "ravenglass"); the tests write them. One file each, because Dovecot rereads a changed
+# "dovecot-test-password"); the tests write them. One file each, because Dovecot rereads a changed
 # passwd-file at most once a second and would miss users added in quick succession. A user
 # whose line carries `userdb_namespace/inbox/prefix=INBOX.` sees the
 # Courier-style layout (`INBOX.` prefix, `.` separator); everyone else gets `/` and no prefix.

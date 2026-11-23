@@ -65,6 +65,8 @@ pub struct Caps { pub move_: bool, pub uidplus: bool, pub condstore: bool, pub i
 pub struct Conn {
     pub session: Session<BoxIo>,
     pub caps: Caps,
+    /// Every capability the server advertised after login, upper-cased.
+    pub advertised: Vec<String>,
     pub limit: Duration,
     /// The selected mailbox and its UIDVALIDITY.
     selected: Option<(String, u32)>,
@@ -154,7 +156,7 @@ impl Conn {
             Ok(Ok(session)) => session,
         };
 
-        let mut conn = Conn { session, caps: Caps::default(), limit, selected: None };
+        let mut conn = Conn { session, caps: Caps::default(), advertised: Vec::new(), limit, selected: None };
         let mut advertised: Vec<String> = Vec::new();
         conn.run("CAPABILITY", |response| {
             if let Response::Capabilities(list) = response {
@@ -163,6 +165,7 @@ impl Conn {
         }).await.map_err(|f| f.error)?;
         let has = |name: &str| advertised.iter().any(|a| a == name) && !config.disabled_capabilities.iter().any(|off| off.eq_ignore_ascii_case(name));
         conn.caps = Caps { move_: has("MOVE"), uidplus: has("UIDPLUS"), condstore: has("CONDSTORE"), idle: has("IDLE") };
+        conn.advertised = advertised;
         Ok(conn)
     }
 
@@ -190,8 +193,18 @@ impl Conn {
 
     /// SELECT, always, so the counters are fresh. A refusal means the folder is gone.
     pub async fn select(&mut self, mailbox: &str) -> Result<Selected, Failure> {
+        let selected = self.open_mailbox("SELECT", mailbox).await?;
+        self.selected = Some((mailbox.to_owned(), selected.validity));
+        Ok(selected)
+    }
+
+    /// EXAMINE: the read-only SELECT. The mailbox is not remembered as selected, so the next
+    /// command that changes something selects it properly.
+    pub async fn examine(&mut self, mailbox: &str) -> Result<Selected, Failure> { self.open_mailbox("EXAMINE", mailbox).await }
+
+    async fn open_mailbox(&mut self, verb: &str, mailbox: &str) -> Result<Selected, Failure> {
         self.selected = None;
-        let command = format!("SELECT {}{}", quote(mailbox)?, if self.caps.condstore { " (CONDSTORE)" } else { "" });
+        let command = format!("{verb} {}{}", quote(mailbox)?, if self.caps.condstore { " (CONDSTORE)" } else { "" });
         let (mut exists, mut validity, mut uid_next, mut highest_modseq) = (0, None, None, None);
         let outcome = self.run(&command, |response| match response {
             Response::MailboxData(MailboxDatum::Exists(count)) => exists = *count,
@@ -209,9 +222,11 @@ impl Conn {
         })?;
         // Without it no UID can be trusted, and a made-up value would look like a changed one.
         let Some(validity) = validity else { return Err(Failure::broken(MailError::Server("the server did not report UIDVALIDITY".into()))) };
-        self.selected = Some((mailbox.to_owned(), validity));
         Ok(Selected { exists, validity, uid_next, highest_modseq })
     }
+
+    /// Forget which mailbox is selected, after a command that may have changed it (DELETE).
+    pub fn deselect(&mut self) { self.selected = None; }
 
     /// The UIDVALIDITY of `mailbox`, selecting it only if it is not selected already.
     pub async fn ensure_selected(&mut self, mailbox: &str) -> Result<u32, Failure> {

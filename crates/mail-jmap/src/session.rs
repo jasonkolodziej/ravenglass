@@ -8,6 +8,8 @@ pub struct Session {
     pub api_url: String,
     /// The account that holds mail (`primaryAccounts` for the mail capability).
     pub account_id: String,
+    /// The capabilities the server announces (`urn:ietf:params:jmap:mail`, …).
+    pub capabilities: Vec<String>,
     download_template: String,
     upload_template: String,
 }
@@ -17,7 +19,8 @@ impl Session {
         let v: Value = serde_json::from_slice(json).map_err(|e| MailError::Server(format!("unreadable JMAP session: {e}")))?;
         let text = |key: &str| v[key].as_str().map(str::to_owned).ok_or_else(|| MailError::Server(format!("JMAP session has no {key}")));
         let account_id = v["primaryAccounts"]["urn:ietf:params:jmap:mail"].as_str().ok_or_else(|| MailError::Server("this JMAP account has no mail".into()))?.to_owned();
-        let session = Self { api_url: text("apiUrl")?, account_id, download_template: text("downloadUrl")?, upload_template: text("uploadUrl")? };
+        let capabilities = v["capabilities"].as_object().map(|c| c.keys().cloned().collect()).unwrap_or_default();
+        let session = Self { api_url: text("apiUrl")?, account_id, capabilities, download_template: text("downloadUrl")?, upload_template: text("uploadUrl")? };
         // Every later request carries the credentials, so none may leave HTTPS.
         if [&session.api_url, &session.download_template, &session.upload_template].iter().any(|u| !u.starts_with("https://")) {
             return Err(MailError::Server("the JMAP session names a URL that is not https".into()));

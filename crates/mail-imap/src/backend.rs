@@ -44,6 +44,48 @@ impl ImapBackend {
     /// an open connection stays authenticated as it is.
     pub fn set_credential(&self, credential: Credential) { *self.inner.credential.lock().unwrap() = credential; }
 
+    /// The capabilities the server advertises after login, upper-cased (connects if needed).
+    pub fn capabilities(&self) -> BoxFut<'static, Result<Vec<String>>> {
+        let inner = self.inner.clone();
+        self.spawn(async move { with_conn!(inner, |conn| async { Ok::<_, crate::net::Failure>(conn.advertised.clone()) }) })
+    }
+
+    /// The newest `limit` messages of `folder`, newest first, and how many the folder holds,
+    /// without changing anything (EXAMINE, peeked bodies) and without a sync token.
+    pub fn newest(&self, folder: &FolderId, limit: u32) -> BoxFut<'static, Result<(Vec<Envelope>, u32)>> {
+        let (inner, folder) = (self.inner.clone(), folder.clone());
+        self.spawn(async move { with_conn!(inner, |conn| ops::newest(&inner, conn, &folder, limit)) })
+    }
+
+    /// Create a folder with a plain ASCII name at the top level.
+    pub fn create_folder(&self, name: &str) -> BoxFut<'static, Result<FolderId>> {
+        let (inner, name) = (self.inner.clone(), name.to_owned());
+        self.spawn(async move { with_conn!(inner, |conn| ops::create_folder(&inner, conn, &name)) })
+    }
+
+    /// Delete a folder and every message in it.
+    pub fn delete_folder(&self, folder: &FolderId) -> BoxFut<'static, Result<()>> {
+        let (inner, folder) = (self.inner.clone(), folder.clone());
+        self.spawn(async move { with_conn!(inner, |conn| ops::delete_folder(&inner, conn, &folder)) })
+    }
+
+    /// Store a message in a folder with these flags, as another client's APPEND would.
+    pub fn append_to(&self, folder: &FolderId, raw: &[u8], flags: Flags) -> BoxFut<'static, Result<MessageId>> {
+        let (inner, folder, raw) = (self.inner.clone(), folder.clone(), raw.to_vec());
+        self.spawn(async move { with_conn!(inner, |conn| ops::append_to(&inner, conn, &folder, &raw, flags)) })
+    }
+
+    /// Connect to the SMTP server, secure the connection and log in, then leave without
+    /// sending. Returns the EHLO extensions, upper-cased.
+    pub fn check_submission(&self) -> BoxFut<'static, Result<Vec<String>>> {
+        let inner = self.inner.clone();
+        self.spawn(async move {
+            let credential = inner.credential.lock().unwrap().clone();
+            let config = &inner.config;
+            smtp::check(smtp::Submission { endpoint: &config.smtp, tls: &inner.tls, username: &config.username, credential: &credential, timeout: config.timeout }).await
+        })
+    }
+
     /// Run `work` on the runtime and return a future that waits for it from any thread.
     fn spawn<T: Send + 'static>(&self, work: impl Future<Output = Result<T>> + Send + 'static) -> BoxFut<'static, Result<T>> {
         Box::pin(Bridged(self.handle.spawn(work)))

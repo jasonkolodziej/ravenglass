@@ -166,6 +166,52 @@ impl<H: JmapHttp> JmapBackend<H> {
         Ok(FolderDelta { added, removed, token: Token { state, query_state }.encode(), ..Default::default() })
     }
 
+    /// The session resource's capabilities (fetching it if needed).
+    pub async fn capabilities(&self) -> Result<Vec<String>> { Ok(self.session().await?.capabilities) }
+
+    /// The newest `limit` messages of `folder`, newest first, and how many it holds. Changes nothing.
+    pub async fn newest(&self, folder: &FolderId, limit: u32) -> Result<(Vec<Envelope>, u32)> {
+        let session = self.session().await?;
+        let mut query = Self::folder_query(&session, unscope(&self.account, &folder.0)?);
+        query["limit"] = json!(limit);
+        query["calculateTotal"] = json!(true);
+        let found = self.call(&session, vec![("Email/query", query)]).await?.remove(0);
+        let ids = strings(&found["ids"]);
+        let (list, _) = self.envelopes(&session, &ids).await?;
+        let total = found["total"].as_u64().unwrap_or(ids.len() as u64) as u32;
+        // Email/get answers in any order; keep the query's.
+        let mut newest: Vec<Envelope> = list.iter().filter_map(|e| envelope(e, &self.account, folder)).collect();
+        newest.sort_by_key(|e| ids.iter().position(|id| scope(&self.account, id) == e.id.0));
+        Ok((newest, total))
+    }
+
+    /// Create a top-level mailbox.
+    pub async fn create_folder(&self, name: &str) -> Result<FolderId> {
+        let session = self.session().await?;
+        let args = json!({ "accountId": session.account_id, "create": { "new": { "name": name, "parentId": null } } });
+        let result = self.call(&session, vec![("Mailbox/set", args)]).await?.remove(0);
+        let id = result["created"]["new"]["id"].as_str().ok_or_else(|| set_error("create mailbox", &result["notCreated"]["new"]))?;
+        Ok(FolderId(scope(&self.account, id)))
+    }
+
+    /// Delete a mailbox and the messages that are only in it.
+    pub async fn delete_folder(&self, folder: &FolderId) -> Result<()> {
+        let session = self.session().await?;
+        let mailbox = unscope(&self.account, &folder.0)?;
+        let args = json!({ "accountId": session.account_id, "destroy": [mailbox], "onDestroyRemoveEmails": true });
+        let result = self.call(&session, vec![("Mailbox/set", args)]).await?.remove(0);
+        if result["notDestroyed"][mailbox].is_object() { Err(set_error("delete mailbox", &result["notDestroyed"][mailbox])) } else { Ok(()) }
+    }
+
+    /// Store a message in a folder with these flags.
+    pub async fn append_to(&self, folder: &FolderId, raw: &[u8], flags: Flags) -> Result<MessageId> {
+        let session = self.session().await?;
+        let mailbox = unscope(&self.account, &folder.0)?;
+        let keywords: serde_json::Map<String, Value> = KEYWORDS.iter().filter(|(flag, _)| flags.contains(*flag)).map(|(_, k)| ((*k).to_owned(), json!(true))).collect();
+        let blob = self.upload(&session, raw).await?;
+        Ok(MessageId(scope(&self.account, &self.import(&session, &blob, mailbox, Value::Object(keywords)).await?)))
+    }
+
     async fn upload(&self, session: &Session, raw: &[u8]) -> Result<String> {
         let answer: Value = serde_json::from_slice(&self.http.post(&session.upload_url(), "message/rfc822", raw.to_vec()).await?).map_err(unreadable)?;
         answer["blobId"].as_str().map(str::to_owned).ok_or_else(|| MailError::Server("upload returned no blobId".into()))

@@ -93,8 +93,36 @@ pub async fn send(submission: Submission<'_>, raw: &[u8], from: &str, rcpt: &[St
     for address in std::iter::once(from).chain(rcpt.iter().map(String::as_str)) {
         if address.is_empty() || address.contains(['<', '>', ' ', '\r', '\n']) { return Err(MailError::Server("an address is not valid".into())); }
     }
-    let Submission { endpoint, tls, username, credential, timeout } = submission;
+    let (mut link, extensions) = open(submission).await?;
 
+    let needs_utf8 = !from.is_ascii() || rcpt.iter().any(|r| !r.is_ascii());
+    let mut mail_from = format!("MAIL FROM:<{from}>");
+    if extensions.iter().any(|e| e == "8BITMIME") && !raw.is_ascii() { mail_from.push_str(" BODY=8BITMIME"); }
+    if needs_utf8 {
+        if !extensions.iter().any(|e| e == "SMTPUTF8") { return Err(MailError::Server("the server cannot take non-ASCII addresses".into())); }
+        mail_from.push_str(" SMTPUTF8");
+    }
+    link.expect(&mail_from, "sender refused").await?;
+    for address in rcpt { link.expect(&format!("RCPT TO:<{address}>"), "recipient refused").await?; }
+    link.expect("DATA", "message refused").await?;
+    link.write(&wire_format(raw)).await?;
+    let accepted = link.reply().await?;
+    if !accepted.ok() { return Err(accepted.error("message refused")); }
+    // The message is the server's now; a failed goodbye changes nothing.
+    let _ = link.command("QUIT").await;
+    Ok(())
+}
+
+/// Connect, secure and log in, then leave without sending anything. Returns the EHLO extensions.
+pub async fn check(submission: Submission<'_>) -> Result<Vec<String>> {
+    let (mut link, extensions) = open(submission).await?;
+    let _ = link.command("QUIT").await;
+    Ok(extensions)
+}
+
+/// Connect, secure (as the endpoint says), EHLO, and log in when the server offers AUTH.
+async fn open(submission: Submission<'_>) -> Result<(Link<BoxIo>, Vec<String>)> {
+    let Submission { endpoint, tls, username, credential, timeout } = submission;
     let tcp = net::connect(endpoint, timeout).await?;
     let mut link: Link<BoxIo> = match endpoint.security {
         Security::Tls => Link::greeted(net::secure(tls, &endpoint.host, tcp, timeout).await?, timeout).await?,
@@ -115,23 +143,7 @@ pub async fn send(submission: Submission<'_>, raw: &[u8], from: &str, rcpt: &[St
     // A server that offers no AUTH (a local relay, a test server) is used as it is; one that needs
     // a login refuses MAIL FROM itself.
     if !mechanisms.is_empty() { authenticate(&mut link, &mechanisms, username, credential).await?; }
-
-    let needs_utf8 = !from.is_ascii() || rcpt.iter().any(|r| !r.is_ascii());
-    let mut mail_from = format!("MAIL FROM:<{from}>");
-    if extensions.iter().any(|e| e == "8BITMIME") && !raw.is_ascii() { mail_from.push_str(" BODY=8BITMIME"); }
-    if needs_utf8 {
-        if !extensions.iter().any(|e| e == "SMTPUTF8") { return Err(MailError::Server("the server cannot take non-ASCII addresses".into())); }
-        mail_from.push_str(" SMTPUTF8");
-    }
-    link.expect(&mail_from, "sender refused").await?;
-    for address in rcpt { link.expect(&format!("RCPT TO:<{address}>"), "recipient refused").await?; }
-    link.expect("DATA", "message refused").await?;
-    link.write(&wire_format(raw)).await?;
-    let accepted = link.reply().await?;
-    if !accepted.ok() { return Err(accepted.error("message refused")); }
-    // The message is the server's now; a failed goodbye changes nothing.
-    let _ = link.command("QUIT").await;
-    Ok(())
+    Ok((link, extensions))
 }
 
 async fn authenticate(link: &mut Link<BoxIo>, mechanisms: &[&str], username: &str, credential: &Credential) -> Result<()> {

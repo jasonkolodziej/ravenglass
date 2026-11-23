@@ -75,7 +75,7 @@ pub fn stalwart() -> Option<&'static Server> {
     SERVER.get_or_init(|| bring_up(Kind::Stalwart)).as_ref()
 }
 
-pub const DOVECOT_PASSWORD: &str = "ravenglass";
+pub const DOVECOT_PASSWORD: &str = "dovecot-test-password";
 pub const STALWART_PASSWORD: &str = "correct-horse-battery-staple-42";
 
 /// A test account: its login and password.
