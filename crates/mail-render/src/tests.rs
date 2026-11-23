@@ -85,6 +85,22 @@ fn images_data_urls_and_trackers() {
 }
 
 #[test]
+fn cellpadding_becomes_cell_padding_for_the_innermost_table_only() {
+    let out = clean(r#"<table cellpadding="24"><tr><td>a</td><td style="color:red">b</td><td><table><tr><td>inner</td></tr></table></td></tr></table><table><thead><tr><th>h</th></tr></thead></table>"#).html;
+    assert!(out.contains(r#"<td style="padding:24px">a</td>"#), "{out}");
+    assert!(out.contains(r#"<td style="padding:24px;color:red">b</td>"#), "{out}");
+    assert!(out.contains("<td>inner</td>") && out.contains("<th>h</th>") && out.contains("<thead>"), "{out}");
+}
+
+#[test]
+fn placeholders_stand_in_for_remote_images_only() {
+    let out = clean(r#"<img src="https://cdn.example/hero.png" width="552" height="180" alt="Blitz 0.3"><img src="cid:logo" alt="Logo"><img src="data:image/png;base64,AAAA">"#);
+    let held = placeholders(&out.html);
+    assert!(!held.contains("cdn.example") && held.contains("width:552px;height:180px;") && held.contains(">Blitz 0.3</span>"), "{held}");
+    assert!(held.contains("cid://acc/1/logo") && held.contains("data:image/png"), "{held}");
+}
+
+#[test]
 fn html_to_text_keeps_reading_order_links_lists_and_quotes() {
     let out = clean(r#"<style>p{color:red}</style><h1>Title</h1><p>One &amp; two<br>three <a href="https://x.example/a">here</a></p>
         <ul><li>first</li><li>second</li></ul><blockquote><p>quoted</p></blockquote><table><tr><td>a</td><td>b</td></tr></table>
@@ -105,9 +121,11 @@ fn text_view_details() {
 #[test]
 fn hostile_and_broken_input_never_panics() {
     assert_eq!(parse(&vec![b'a'; MAX_MESSAGE_BYTES + 1]), Err(RenderError::TooLarge));
-    for html in ["<", "<img", "<img src=\"", "<style>", "<style>url(", "<a href=\"x", "&#xFFFFFFFF;&#;&", "<img src=cid:>", "<table><td><style>@import", "\u{0}<p>é<img alt=\"é\">"] {
+    for html in ["<", "<img", "<img src=\"", "<style>", "<style>url(", "<a href=\"x", "&#xFFFFFFFF;&#;&", "<table cellpadding=\"x\"><td", "</table></table><td>", "<img src=\"https://x", "<img src=cid:>", "<table><td><style>@import", "\u{0}<p>é<img alt=\"é\">"] {
         let out = clean(html);
         html_to_text(&out.html);
+        placeholders(&out.html);
+        placeholders(html);
     }
     for raw in [&b""[..], b"\r\n\r\n", b"Content-Type: multipart/mixed; boundary=x\r\n\r\n--x\r\n", b"\xff\xfe\x00"] {
         if let Ok(p) = parse(raw) { p.body(&id(), Prefer::Html); }

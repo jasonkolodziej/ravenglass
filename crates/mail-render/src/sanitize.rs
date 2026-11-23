@@ -49,11 +49,24 @@ fn embedded_image(url: &str) -> bool {
 fn post_pass(clean: &str, message: &MessageId) -> SanitizedHtml {
     let mut out = SanitizedHtml { html: String::with_capacity(clean.len()), ..Default::default() };
     let mut rest = clean;
+    // `cellpadding` of each open table, innermost last (stage 3: the renderer ignores the attribute).
+    let mut tables: Vec<Option<f32>> = Vec::new();
     while let Some(lt) = rest.find('<') {
         out.html.push_str(&rest[..lt]);
         rest = &rest[lt..];
         let end = tag_end(rest);
         let (tag, after) = rest.split_at(end);
+        if tag.starts_with("<table") {
+            tables.push(attributes(tag).iter().find(|(n, _)| *n == "cellpadding").and_then(|(_, v)| v.trim().parse().ok()));
+        } else if tag.starts_with("</table") {
+            tables.pop();
+        } else if (tag.starts_with("<td") || tag.starts_with("<th")) && !tag.starts_with("<thead")
+            && let Some(Some(padding)) = tables.last()
+        {
+            out.html.push_str(&padded_cell(tag, *padding));
+            rest = after;
+            continue;
+        }
         if tag.starts_with("<style") {
             let close = after.find("</style>").unwrap_or(after.len());
             out.html.push_str(tag);
@@ -131,4 +144,59 @@ fn content_id(target: &str) -> &str {
     let t = target.trim();
     let t = t.strip_prefix("&lt;").unwrap_or(t);
     t.strip_suffix("&gt;").unwrap_or(t)
+}
+
+/// A table cell with its table's `cellpadding` as CSS. The cell's own `padding` still wins,
+/// because it comes later in the declaration list.
+fn padded_cell(tag: &str, padding: f32) -> String {
+    let attrs = attributes(tag);
+    let name = if tag.starts_with("<td") { "td" } else { "th" };
+    let mut out = format!("<{name}");
+    let mut styled = false;
+    for (attr, value) in &attrs {
+        if *attr == "style" {
+            styled = true;
+            out.push_str(&format!(" style=\"padding:{padding}px;{value}\""));
+        } else {
+            out.push_str(&format!(" {attr}=\"{value}\""));
+        }
+    }
+    if !styled { out.push_str(&format!(" style=\"padding:{padding}px\"")); }
+    out.push('>');
+    out
+}
+
+/// Replace every remote image with a box of the same size showing its `alt` text. The reader
+/// uses this while images are blocked, so the layout holds and the reader sees what is missing.
+/// `html` must be [`sanitize`] output.
+pub fn placeholders(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(lt) = rest.find('<') {
+        out.push_str(&rest[..lt]);
+        rest = &rest[lt..];
+        let (tag, after) = rest.split_at(tag_end(rest));
+        rest = after;
+        if tag.starts_with("<style") {
+            let close = rest.find("</style>").unwrap_or(rest.len());
+            out.push_str(tag);
+            out.push_str(&rest[..close]);
+            rest = &rest[close..];
+            continue;
+        }
+        let attrs = if tag.starts_with("<img") { attributes(tag) } else { Vec::new() };
+        let get = |name: &str| attrs.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        let src = get("src").unwrap_or("").trim().to_ascii_lowercase();
+        if !(src.starts_with("http://") || src.starts_with("https://") || src.starts_with("//")) {
+            out.push_str(tag);
+            continue;
+        }
+        let size = |name: &str| get(name).and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok());
+        let mut style = String::from("display:inline-block;box-sizing:border-box;overflow:hidden;border:1px dashed #8a85ad;color:#6b6787;font-size:12px;padding:4px;max-width:100%;");
+        if let Some(w) = size("width") { style.push_str(&format!("width:{w}px;")); }
+        if let Some(h) = size("height") { style.push_str(&format!("height:{h}px;")); }
+        out.push_str(&format!("<span style=\"{style}\">{}</span>", get("alt").unwrap_or("")));
+    }
+    out.push_str(rest);
+    out
 }
