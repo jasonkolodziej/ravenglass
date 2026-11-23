@@ -9,7 +9,7 @@ mod color;
 mod import;
 
 pub use color::{Rgb, contrast, fix_contrast};
-pub use import::import_ghostty;
+pub use import::{import, import_alacritty, import_ghostty, import_iterm2, import_kitty, import_windows_terminal};
 
 use serde::Deserialize;
 use std::collections::BTreeMap;

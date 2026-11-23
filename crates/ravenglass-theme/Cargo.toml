@@ -10,3 +10,5 @@ description = "Ravenglass themes: 16 named colours + bg/fg/cursor, roles, user o
 serde.workspace = true
 toml.workspace = true
 thiserror.workspace = true
+serde_json.workspace = true
+roxmltree.workspace = true
