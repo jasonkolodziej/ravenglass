@@ -72,7 +72,7 @@ fn r_opens_a_reply_to_the_sender_with_the_message_quoted() {
     assert_eq!(rt.state.mode, Mode::Compose);
     assert_eq!(rt.state.focused_kind(), Kind::Compose);
     let c = draft(&rt);
-    assert_eq!(c.draft.to, [sender.clone()]);
+    assert_eq!(c.draft.to, std::slice::from_ref(&sender));
     assert_eq!(c.draft.subject, format!("Re: {subject}"));
     assert!(c.draft.in_reply_to.is_some());
     assert!(c.body.text.lines().any(|l| l.starts_with("> ")), "the original is quoted: {:?}", c.body.text);

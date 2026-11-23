@@ -1,0 +1,20 @@
+{"events": [
+  {"t": 0.30, "type": "key", "name": "j"},
+  {"t": 0.60, "type": "key", "name": "r"},
+  {"t": 1.00, "type": "type", "text": "Thanks, the build goes north today.", "every": 0.04},
+  {"t": 2.70, "type": "mark", "name": "typed"},
+  {"t": 2.90, "type": "key", "name": "Tab"},
+  {"t": 3.10, "type": "key", "name": "Tab"},
+  {"t": 3.30, "type": "type", "text": "hug", "every": 0.08},
+  {"t": 3.90, "type": "mark", "name": "suggested"},
+  {"t": 4.10, "type": "key", "name": "Tab"},
+  {"t": 4.50, "type": "key", "cmd": true, "shift": true, "name": "d"},
+  {"t": 5.00, "type": "mark", "name": "queued"},
+  {"t": 7.50, "type": "key", "name": "u"},
+  {"t": 8.00, "type": "mark", "name": "undone"},
+  {"t": 8.30, "type": "type", "text": " Watch the ferry dock.", "every": 0.04},
+  {"t": 9.60, "type": "key", "cmd": true, "shift": true, "name": "d"},
+  {"t": 14.00, "type": "mark", "name": "counting"},
+  {"t": 20.50, "type": "mark", "name": "sent"},
+  {"t": 21.00, "type": "mark", "name": "end"}
+]}

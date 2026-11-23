@@ -344,6 +344,7 @@ impl AppState {
                 // The engine closed its session when it queued the message; open it again.
                 let c = &mut self.compose.drafts[index];
                 c.outbox = None;
+                c.field = Field::Body;
                 c.unsaved += 1;
                 let draft = c.draft.clone();
                 self.dispatch(Command::EditDraft(Box::new(draft)));
@@ -482,8 +483,11 @@ impl AppState {
             c.field = field;
             c.completion = None;
         }
-        // A click put the caret here: the mode follows the keyboard.
-        if self.mode != Mode::Compose { self.mode = Mode::Compose; }
+        // A click put the caret here: the mode and the pane focus follow the keyboard.
+        if self.mode != Mode::Compose {
+            self.mode = Mode::Compose;
+            self.ws_mut().panes.focus_kind(Kind::Compose);
+        }
         self.completion_key(press) || self.mode_key(press)
     }
 
