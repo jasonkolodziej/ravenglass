@@ -12,9 +12,12 @@ fn connector(post: Option<FormPost>) -> (Connector, Arc<MemorySecrets>) {
     (Connector { secrets: secrets.clone(), client_ids: ClientIds { google: Some("client-1".into()), microsoft: None }, post }, secrets)
 }
 
+/// The `(url, body)` of each request a fake token endpoint received.
+type Seen = Arc<Mutex<Vec<(String, String)>>>;
+
 /// A token endpoint that records what it was sent and answers from a script.
-fn endpoint(answers: Vec<&'static str>) -> (FormPost, Arc<Mutex<Vec<(String, String)>>>) {
-    let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::default();
+fn endpoint(answers: Vec<&'static str>) -> (FormPost, Seen) {
+    let seen: Seen = Arc::default();
     let answers = Mutex::new(answers.into_iter());
     let post: FormPost = { let seen = seen.clone(); Arc::new(move |url: &str, body: &str| { seen.lock().unwrap().push((url.to_owned(), body.to_owned())); answers.lock().unwrap().next().map(str::to_owned).ok_or_else(|| "offline".to_owned()) }) };
     (post, seen)
