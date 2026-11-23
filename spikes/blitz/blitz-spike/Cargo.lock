@@ -2063,6 +2063,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
+name = "mail-builder"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aca3ad941e4c466402151719d6b4cea4bdfcb212b11e5970afa75e7d28c6502a"
+dependencies = [
+ "encodify",
+ "web-time",
+]
+
+[[package]]
 name = "mail-core"
 version = "0.0.0"
 dependencies = [
@@ -2087,6 +2097,7 @@ name = "mail-render"
 version = "0.0.0"
 dependencies = [
  "ammonia",
+ "mail-builder",
  "mail-core",
  "mail-parser",
  "serde",

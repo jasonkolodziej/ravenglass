@@ -1,0 +1,22 @@
+From: Odin Allfather <odin@asgard.example>
+To: Jason <jason@example.com>
+Subject: =?utf-8?Q?Caf=C3=A9_menu_=E2=9C=93?=
+Date: Fri, 13 Nov 2026 16:44:00 +0000
+Message-ID: <10-encodings@fixtures.example>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="b1"
+
+--b1
+Content-Type: text/plain; charset=iso-8859-1
+Content-Transfer-Encoding: quoted-printable
+
+Caf=E9 menu: cr=E8me br=FBl=E9e, soft line=
+ break joined.
+
+--b1
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: base64
+
+PHA+Q2Fmw6kgbWVudTogPGI+Y3LDqG1lIGJyw7tsw6llPC9iPi4gPGEgaHJlZj0iaHR0cHM6Ly9j
+YWZlLmV4YW1wbGUvbWVudSI+TWVudTwvYT48L3A+
+--b1--

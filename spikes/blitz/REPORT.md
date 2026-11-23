@@ -60,3 +60,16 @@ three fixtures are synthetic). The 30-email corpus in M6 covers those.
 - **Text extraction:** not needed from Blitz; `mail_render::html_to_text` already produces the text view and the search
   text from the sanitized HTML.
 - **Binary size:** the spike is 27 MB in release with Rune and Blitz together, unstripped.
+
+## Later findings (after the spike)
+
+- **`cellpadding`** is now converted to cell padding by `mail-render`, and blocked remote images show a sized box with
+  their alt text.
+- **Padded link buttons** render correctly when the email sets `display: inline-block` on them (fixture 06), which is
+  what most marketing mail does. A padded plain inline link is still tight.
+- **Absurd sizes crash the painter.** `height: 1e99px` (fixture 09) lays out but panics inside `vello_common` when
+  painted. `mail-blitz` refuses any document taller than 60,000 px or with a non-finite height and the reader shows the
+  text view; the panic guard is the second line of defence.
+- **Right-to-left text** shapes and aligns correctly (fixture 07), but list bullets are drawn on the left.
+- **CJK** wraps correctly without spaces (fixture 08).
+- **A 400-row table** (fixture 11) is 26,974 px tall at 2× and paints as 27 tiles.

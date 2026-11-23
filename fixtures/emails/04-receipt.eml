@@ -1,0 +1,17 @@
+From: Fastmail <billing@fastmail.example>
+To: Jason <jason@example.com>
+Subject: Your invoice for November
+Date: Fri, 13 Nov 2026 16:44:00 +0000
+Message-ID: <04-receipt@fixtures.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body style="font-family:Arial,sans-serif;background:#f6f6f6;margin:0;padding:24px">
+<table width="560" align="center" cellpadding="16" cellspacing="0" bgcolor="#ffffff" style="border:1px solid #dddddd">
+<tr><td colspan="2"><h2 style="margin:0">Receipt #48211</h2><p style="color:#666">Paid 13 November 2026</p></td></tr>
+<tr bgcolor="#f0f0f0"><th align="left">Item</th><th align="right">Amount</th></tr>
+<tr><td>Standard plan, 1 year</td><td align="right">$60.00</td></tr>
+<tr><td>Extra storage 50 GB</td><td align="right">$12.00</td></tr>
+<tr><td align="right"><b>Total</b></td><td align="right"><b>$72.00</b></td></tr>
+<tr><td colspan="2" style="font-size:12px;color:#999">Questions? <a href="https://fastmail.example/help">Contact support</a>.</td></tr>
+</table></body></html>

@@ -33,7 +33,7 @@ pub const TILE_H: u32 = 1024;
 /// Caps from architecture §7: one image, and all images of one message.
 pub const MAX_IMAGE_BYTES: usize = 10 << 20;
 pub const MAX_MESSAGE_IMAGE_BYTES: usize = 40 << 20;
-/// Documents taller than this (CSS px) are cut off; the text view has the rest.
+/// Documents taller than this (CSS px) are not rendered; the text view shows them instead.
 pub const MAX_HEIGHT: f32 = 60_000.0;
 
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -44,6 +44,9 @@ pub enum Failure {
     Empty,
     #[error("the view is closed")]
     Closed,
+    /// Taller than [`MAX_HEIGHT`], or a size that is not a number: the text view shows it instead.
+    #[error("the message is too large to lay out")]
+    TooLarge,
 }
 
 /// How an email is shown in a dark theme.
@@ -118,8 +121,11 @@ impl HtmlView {
         // Image bytes are delivered during the first pass; a second pass lays them out.
         doc.resolve(0.0);
         let view = Self { doc, options: Options { scale, ..options }, refused };
-        if view.height() <= 0.0 { return Err(Failure::Empty); }
-        Ok(view)
+        match view.height() {
+            h if !h.is_finite() || h > MAX_HEIGHT => Err(Failure::TooLarge),
+            h if h <= 0.0 => Err(Failure::Empty),
+            _ => Ok(view),
+        }
     }
 
     /// Lay out again at a new width, keeping the parsed document.
@@ -131,10 +137,13 @@ impl HtmlView {
         self.doc.resolve(0.0);
     }
 
+    /// False if a relayout made the document too large; the caller then closes the view.
+    pub fn is_renderable(&self) -> bool { self.height().is_finite() && self.height() > 0.0 && self.height() <= MAX_HEIGHT }
+
     pub fn options(&self) -> &Options { &self.options }
 
     /// Laid-out height in CSS pixels.
-    pub fn height(&self) -> f32 { self.doc.root_element().final_layout().size.height.min(MAX_HEIGHT) }
+    pub fn height(&self) -> f32 { self.doc.root_element().final_layout().size.height }
 
     /// Size in device pixels.
     pub fn size(&self) -> (u32, u32) { (device(self.options.width, self.options.scale), ((self.height() * self.options.scale).ceil() as u32).max(1)) }

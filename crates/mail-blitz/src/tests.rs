@@ -108,7 +108,7 @@ fn panics_and_empty_documents_become_failures() {
     assert_eq!(guarded(|| Ok(7)), Ok(7));
     for html in ["", "<", "<table><tr><td><table>", "<style>*{display:none}</style><p>x</p>", "<p style=\"height:99999999px\">x</p>"] {
         if let Ok(mut v) = guarded(|| HtmlView::new(html, Images::default(), Options::default())) {
-            assert!(v.height() <= MAX_HEIGHT);
+            assert!(v.is_renderable());
             let _ = guarded(|| Ok(v.tile(0)));
         }
     }
@@ -134,4 +134,41 @@ fn renderer_thread_serves_views_by_id_and_survives_a_bad_one() {
     assert_eq!(renderer.tile(1, 0), Err(Failure::Closed));
     // The handle is what crosses threads; the documents never leave the render thread.
     std::thread::spawn(move || assert!(renderer.open(3, "<p>x</p>".into(), Images::default(), Options::default()).is_ok())).join().unwrap();
+}
+
+/// Every fixture email goes through the whole pipeline: parse, sanitize, lay out, paint every
+/// tile, hit-test. Nothing may panic, fetch, or run past the budget (architecture §7).
+#[test]
+fn the_fixture_corpus_renders_within_budget_and_fetches_nothing() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/emails");
+    let mut files: Vec<_> = std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "eml")).collect();
+    files.sort();
+    assert!(files.len() >= 11, "the corpus is missing files");
+    let mut rendered = 0;
+    for path in files {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        let parsed = mail_render::parse(&std::fs::read(&path).unwrap()).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert!(!parsed.subject.is_empty(), "{name}");
+        let Some(raw) = &parsed.html else { continue };
+        let clean = mail_render::sanitize(raw, &MessageId::from(name.as_str()));
+        for banned in ["<script", "<form", "<input", "@import", "javascript:", "position:fixed", "position: fixed"] {
+            assert!(!clean.html.to_ascii_lowercase().contains(banned), "{name}: `{banned}` survived sanitizing");
+        }
+        let started = std::time::Instant::now();
+        let opened = guarded(|| HtmlView::new(&clean.html, Images { inline: parsed.inline.clone(), ..Default::default() }, Options { scale: 2.0, ..Default::default() }));
+        // The malformed fixture asks for an absurd height, so it must be refused, not painted.
+        if name.starts_with("09-") { assert_eq!(opened.err(), Some(Failure::TooLarge), "{name}"); continue; }
+        let mut view = opened.unwrap_or_else(|e| panic!("{name}: {e}"));
+        let first = view.tile(0).unwrap_or_else(|| panic!("{name}: no first tile"));
+        let first_paint = started.elapsed();
+        for index in 1..view.tile_count() { assert!(view.tile(index).is_some(), "{name}: tile {index}"); }
+        for y in (0..view.height() as u32).step_by(40) { view.link_at(100.0, y as f32); }
+        assert_eq!(view.refused_requests(), 0, "{name}: a request reached the network layer");
+        assert!(first.rgba.iter().any(|b| *b != first.rgba[0]), "{name}: the first tile is blank");
+        eprintln!("{name}: {}x{} px, {} tiles, first paint {first_paint:?}", view.size().0, view.size().1, view.tile_count());
+        // 250 ms is the release budget for a heavy newsletter; debug builds get 20x.
+        assert!(first_paint.as_millis() < 5000, "{name}: first paint took {first_paint:?}");
+        rendered += 1;
+    }
+    assert!(rendered >= 9);
 }

@@ -1,0 +1,29 @@
+From: Dioxus <news@dioxus.example>
+To: Jason <jason@example.com>
+Subject: Black Friday: 40% off everything
+Date: Fri, 13 Nov 2026 16:44:00 +0000
+Message-ID: <06-marketing-media-queries@fixtures.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>
+@import url("https://cdn.example/fonts.css");
+@font-face { font-family: Promo; src: url(https://cdn.example/promo.woff2); }
+body { margin:0; background:#111; color:#eee; font-family: Promo, Helvetica, sans-serif; }
+.hero { background: #222 url(https://cdn.example/hero.jpg) no-repeat center; padding: 48px 24px; text-align:center; }
+.cols td { width: 33%; }
+@media (max-width: 480px) { .cols td { display:block; width:100% !important; } .hide { display:none !important; } }
+@media (prefers-color-scheme: dark) { body { background:#000 } }
+.cta { display:inline-block; background:#ff5a36; color:#fff !important; padding:14px 28px; border-radius:24px; text-decoration:none; font-weight:bold }
+</style></head><body>
+<div class="hero"><h1 style="font-size:40px;margin:0">40% OFF</h1><p>Until Monday.</p><a class="cta" href="https://shop.example/sale?utm_source=mail">Shop the sale</a></div>
+<table class="cols" width="100%" cellpadding="12"><tr>
+<td><img src="https://cdn.example/a.jpg" width="160" height="120" alt="Keyboard"><br>Keyboard</td>
+<td><img src="https://cdn.example/b.jpg" width="160" height="120" alt="Monitor"><br>Monitor</td>
+<td class="hide"><img src="https://cdn.example/c.jpg" width="160" height="120" alt="Dock"><br>Dock</td>
+</tr></table>
+<form action="https://shop.example/subscribe"><input name="email"><button>Subscribe</button></form>
+<script>document.location='https://evil.example'</script>
+<p style="position:fixed;bottom:0;font-size:10px">You are receiving this because you signed up. <a href="https://shop.example/u">Unsubscribe</a></p>
+<img src="https://track.example/wf/open?upn=abc" width="20" height="20">
+</body></html>

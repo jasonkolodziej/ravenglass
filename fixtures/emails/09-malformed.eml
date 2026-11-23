@@ -1,0 +1,14 @@
+From: Broken <broken@example.com>
+To: Jason <jason@example.com>
+Subject: Unclosed everything
+Date: Fri, 13 Nov 2026 16:44:00 +0000
+Message-ID: <09-malformed@fixtures.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body><table><tr><td><b>bold never closed<p>paragraph in a cell<div><span style="color:red;;;:;background:url(">red
+<table><td>cell without a row</table></td></td></tr>
+<a href="https://ok.example/page">link <i>italic</a> still italic</i>
+<img src="cid:missing@nowhere"><img><p style="width:-50px;height:1e99px;margin:auto auto auto">odd sizes</p>
+&amp;&lt;&notanentity; &#x110000; &#0;
+<style>p { color: blue </style><!-- unterminated comment

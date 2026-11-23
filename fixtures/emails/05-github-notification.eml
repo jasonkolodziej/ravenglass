@@ -1,0 +1,17 @@
+From: GitHub <notifications@github.example>
+To: Jason <jason@example.com>
+Subject: [anomalyco/rune] rune-taffy: handle FlexWrap::Balance (#412)
+Date: Fri, 13 Nov 2026 16:44:00 +0000
+Message-ID: <05-github-notification@fixtures.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<p><b>@octocat</b> commented on this pull request.</p>
+<hr>
+<p>In <a href="https://github.example/anomalyco/rune/pull/412#discussion_r1">crates/rune-taffy/src/style/mod.rs</a>:</p>
+<pre style="background:#f6f8fa;padding:8px;font-size:12px;overflow:auto">&gt;          FlexWrap::WrapReverse =&gt; 2,
++        _ =&gt; 1,
+ }</pre>
+<p>Could this encode the two new variants instead of folding them into <code>Wrap</code>?</p>
+<blockquote><p>On Fri, Nov 13, someone wrote:</p><blockquote><p>nested quote</p></blockquote></blockquote>
+<p style="font-size:small;color:#666">&mdash;<br>Reply to this email directly, <a href="https://github.example/anomalyco/rune/pull/412">view it on GitHub</a>, or <a href="https://github.example/unsubscribe">unsubscribe</a>.<img src="https://github.example/notifications/beacon/abc.gif" height="1" width="1" alt=""></p>

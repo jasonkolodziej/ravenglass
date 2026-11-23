@@ -1,0 +1,9 @@
+From: ムニン <muninn@ravens.example>
+To: Jason <jason@example.com>
+Subject: 週次ダイジェスト
+Date: Fri, 13 Nov 2026 16:44:00 +0000
+Message-ID: <08-cjk@fixtures.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<p>ジェイソンさん、</p><p>今週のまとめです。長い行の折り返しを確認するための文章を続けます。日本語には単語の間に空白がないので、行の途中で折り返す必要があります。</p><p>中文：这是一个没有空格的长句子，用来测试自动换行是否正常工作。</p><p>한국어: 줄바꿈 시험입니다.</p>

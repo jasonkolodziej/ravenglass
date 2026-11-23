@@ -1,0 +1,9 @@
+From: سارة <sara@example.com>
+To: Jason <jason@example.com>
+Subject: مرحبا
+Date: Fri, 13 Nov 2026 16:44:00 +0000
+Message-ID: <07-rtl-arabic@fixtures.example>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<div dir="rtl" lang="ar" style="font-size:16px"><p>مرحبا جايسون،</p><p>هذا اختبار للنص من اليمين إلى اليسار مع رقم 2026 وكلمة Ravenglass في المنتصف.</p><ul><li>البند الأول</li><li>البند الثاني</li></ul><p>تحياتي،<br>سارة</p></div>

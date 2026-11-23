@@ -36,7 +36,11 @@ impl Renderer {
                         let opened = guarded(|| HtmlView::new(&html, images, options));
                         let _ = reply.send(opened.map(|v| { let info = info(&v); views.insert(view, v); info }));
                     }
-                    Job::SetWidth { view, width, reply } => { let _ = reply.send(on(&mut views, view, |v| { v.set_width(width); info(v) })); }
+                    Job::SetWidth { view, width, reply } => {
+                        let resized = on(&mut views, view, |v| { v.set_width(width); v.is_renderable().then(|| info(v)) });
+                        if matches!(resized, Ok(None)) { views.remove(&view); }
+                        let _ = reply.send(resized.and_then(|info| info.ok_or(Failure::TooLarge)));
+                    }
                     Job::Tile { view, index, reply } => { let _ = reply.send(on(&mut views, view, |v| v.tile(index))); }
                     Job::LinkAt { view, x, y, reply } => { let _ = reply.send(on(&mut views, view, |v| v.link_at(x, y))); }
                     Job::Close { view } => { views.remove(&view); }
