@@ -14,6 +14,9 @@
 
 mod net;
 mod worker;
+/// wasm: the same [`Renderer`] API with no thread to run on (architecture §7, "On the web").
+#[cfg(target_arch = "wasm32")]
+mod inline;
 #[cfg(test)]
 mod tests;
 
@@ -26,7 +29,11 @@ use mail_render::InlinePart;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub use worker::{Info, Renderer};
+pub use worker::Info;
+#[cfg(not(target_arch = "wasm32"))]
+pub use worker::Renderer;
+#[cfg(target_arch = "wasm32")]
+pub use inline::Renderer;
 
 /// Tiles are this many device pixels tall (`mail_core::machine::html_view::TILE_H`).
 pub const TILE_H: u32 = 1024;

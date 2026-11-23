@@ -1,0 +1,7 @@
+/* Only the page around Rune's canvas; everything the app draws comes from its theme. The
+   colours here are the Night theme's background and foreground, for the moment before the
+   first frame. */
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; background: #0E0C1A; color: #ECEAF6; }
+#rg-loading { font: 14px/1.35 "IBM Plex Mono", ui-monospace, monospace; padding: 24px; }
+/* The live region mirrors the status line for screen readers; it is not drawn. */
+#rg-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

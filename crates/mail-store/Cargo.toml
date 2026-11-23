@@ -13,5 +13,10 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
+# On wasm32 rusqlite links SQLite through sqlite-wasm-rs; its `wasm-bindgen` feature supplies
+# the clock and randomness SQLite asks its host for.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+sqlite-wasm-rs.workspace = true
+
 [dev-dependencies]
 mail-mock = { path = "../mail-mock" }

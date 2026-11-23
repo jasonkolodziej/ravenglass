@@ -16,12 +16,27 @@ mail-core = { path = "../crates/mail-core" }
 mail-mock = { path = "../crates/mail-mock" }
 mail-store = { path = "../crates/mail-store" }
 mail-render = { path = "../crates/mail-render" }
-ravenglass-engine = { path = "../crates/ravenglass-engine", features = ["http"] }
+ravenglass-engine = { path = "../crates/ravenglass-engine" }
 ravenglass-theme = { path = "../crates/ravenglass-theme" }
 ravenglass-brand = { path = "../crates/ravenglass-brand" }
-open = "5"                                             # links leave through the system browser (platform::open_url)
-ravenglass-accounts = { path = "../crates/ravenglass-accounts" }
 ravenglass-config = { path = "../crates/ravenglass-config" }
-mail-auth = { path = "../crates/mail-auth" }
+mail-auth = { path = "../crates/mail-auth", default-features = false }
 serde.workspace = true
 toml.workspace = true
+
+# Desktop: direct IMAP/SMTP/JMAP, the OS keyring, HTTPS image fetches and the system browser.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ravenglass-engine = { path = "../crates/ravenglass-engine", features = ["http"] }
+ravenglass-accounts = { path = "../crates/ravenglass-accounts" }
+mail-auth = { path = "../crates/mail-auth", features = ["keyring"] }
+open = "5"                                             # links leave through the system browser (platform::open_url)
+
+# The web build (architecture §8): mail through the Relay, settings in browser storage.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+relay-client = { path = "../crates/relay-client" }
+relay-proto = { path = "../crates/relay-proto" }
+serde_json.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+js-sys.workspace = true
+web-sys = { workspace = true, features = ["Window", "Document", "Element", "HtmlElement", "Storage", "Location", "Navigator", "StorageManager"] }

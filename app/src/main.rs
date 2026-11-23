@@ -32,6 +32,7 @@ mod state;
 mod timefmt;
 mod update;
 mod view;
+mod web;
 
 #[cfg(test)]
 mod tests;
@@ -120,5 +121,9 @@ pub fn spec() -> AppSpec<AppState> {
 }
 
 fn main() {
+    #[cfg(not(target_arch = "wasm32"))]
     rune::run(spec());
+    // The page: the same app behind the Relay sign-in (`web/`).
+    #[cfg(target_arch = "wasm32")]
+    rune::run(web::spec());
 }

@@ -56,6 +56,8 @@ impl AppState {
             compose: Default::default(),
             links: Default::default(),
             shell: Default::default(),
+            #[cfg(target_arch = "wasm32")]
+            web: Default::default(),
         }
     }
 

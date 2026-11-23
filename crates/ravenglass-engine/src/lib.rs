@@ -2,7 +2,7 @@
 //!
 //! The UI sends [`Command`]s and renders [`Event`]s; the engine owns the backends, the store, the
 //! sync and outbox state machines and the offline journal. It imports no UI types, so it runs on
-//! a desktop thread ([`runner`]), in a Web Worker and in tests. [`Engine::handle`] is a plain
+//! a desktop thread ([`runner`]), in the browser (`web.rs`, the same API) and in tests. [`Engine::handle`] is a plain
 //! `async fn` with no executor of its own.
 //!
 //! HTML mail is laid out and painted by `mail-blitz` on its render thread; the engine holds the
@@ -20,6 +20,10 @@ pub mod fetch;
 mod html;
 mod ops;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod runner;
+/// The web host: the same API as the desktop runner, as a `spawn_local` task.
+#[cfg(target_arch = "wasm32")]
+#[path = "web.rs"]
 pub mod runner;
 #[cfg(test)]
 mod tests;

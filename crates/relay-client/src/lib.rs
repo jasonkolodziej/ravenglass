@@ -112,3 +112,7 @@ impl Transport for HttpTransport {
 
 #[cfg(test)]
 mod tests;
+#[cfg(target_arch = "wasm32")]
+pub mod web;
+#[cfg(target_arch = "wasm32")]
+pub use web::{Auth, WebBackend, WebTransport};

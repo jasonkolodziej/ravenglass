@@ -253,6 +253,9 @@ pub struct AppState {
     pub links: crate::links::Links,
     /// The profile, accounts, settings, account form and app lock (`shell.rs`).
     pub shell: crate::shell::Shell,
+    /// The web build's Relay session and browser glue (`web/host.rs`).
+    #[cfg(target_arch = "wasm32")]
+    pub web: crate::web::Web,
 }
 
 /// Below this many columns of pane area the layout collapses to one pane.

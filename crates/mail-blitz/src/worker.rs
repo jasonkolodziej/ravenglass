@@ -2,16 +2,21 @@
 //! else holds a [`Renderer`] handle. Each request is answered before the next is taken, and a
 //! panic inside Blitz costs only the view it happened in.
 
-use crate::{Failure, HtmlView, Images, Link, Options, Tile, guarded};
+use crate::{Failure, HtmlView, guarded};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::{Images, Link, Options, Tile};
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{Sender, channel};
 
 /// What the reader needs to place tiles: sizes in device pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Info { pub width: u32, pub height: u32, pub tiles: u32, pub refused_requests: u32 }
 
+#[cfg(not(target_arch = "wasm32"))]
 type Reply<T> = Sender<Result<T, Failure>>;
 
+#[cfg(not(target_arch = "wasm32"))]
 enum Job {
     Open { view: u64, html: String, images: Images, options: Options, reply: Reply<Info> },
     SetWidth { view: u64, width: u32, reply: Reply<Info> },
@@ -21,9 +26,11 @@ enum Job {
 }
 
 /// A handle to the render thread. Dropping every clone stops the thread.
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
 pub struct Renderer { jobs: Sender<Job> }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Renderer {
     pub fn spawn() -> std::io::Result<Self> {
         let (jobs, inbox) = channel::<Job>();
@@ -71,13 +78,13 @@ impl Renderer {
     }
 }
 
-fn info(v: &HtmlView) -> Info {
+pub(crate) fn info(v: &HtmlView) -> Info {
     let (width, height) = v.size();
     Info { width, height, tiles: v.tile_count(), refused_requests: v.refused_requests() }
 }
 
 /// Run `work` on one view; a panic closes that view.
-fn on<T>(views: &mut HashMap<u64, HtmlView>, view: u64, work: impl FnOnce(&mut HtmlView) -> T) -> Result<T, Failure> {
+pub(crate) fn on<T>(views: &mut HashMap<u64, HtmlView>, view: u64, work: impl FnOnce(&mut HtmlView) -> T) -> Result<T, Failure> {
     let v = views.get_mut(&view).ok_or(Failure::Closed)?;
     let result = guarded(|| Ok(work(v)));
     if result.is_err() { views.remove(&view); }
