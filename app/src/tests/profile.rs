@@ -114,7 +114,8 @@ fn the_profile_flag_wins_over_the_environment_which_wins_over_the_platform() {
     let e = env(&[("HOME", "/home/huginn"), ("RAVENGLASS_PROFILE", "/tmp/from-env")]);
     assert_eq!(Profile::resolve(Some("/tmp/from-flag"), &e), Some(Profile::at("/tmp/from-flag")));
     assert_eq!(Profile::resolve(None, &e), Some(Profile::at("/tmp/from-env")));
-    let plain = env(&[("HOME", "/home/huginn"), ("RAVENGLASS_PROFILE", " ")]);
+    // A home folder under every platform's own variable, so this runs on all three.
+    let plain = env(&[("HOME", "/home/huginn"), ("APPDATA", r"C:\Users\huginn\AppData\Roaming"), ("RAVENGLASS_PROFILE", " ")]);
     let dirs = platform::dirs(&plain).expect("a home");
     assert_eq!(Profile::resolve(None, &plain), Some(Profile { config_dir: dirs.config, data_dir: dirs.data }));
     assert_eq!(Profile::resolve(None, &env(&[])), None);
