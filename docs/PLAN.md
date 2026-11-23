@@ -416,3 +416,12 @@ Resolved 2026-11-23 (second round):
 8. **Relay hosting:** both. Self-hosters can run it for one person with a shared token; an official, multi-user instance gets per-user sign-in, per-user encrypted secrets and per-user isolation.
 9. **Next:** all of it in parallel: the web build, packaging, and verification against real mail server software.
 
+Resolved 2026-11-23 (third round):
+10. **OAuth client ids:** Jason registers them; builds take them from the environment (ADR item 12).
+11. **Bundle id, publisher, certificates:** the placeholders stay for now, in one place: `packaging/identity.toml`, with `packaging/check-identity.sh` in CI keeping every copy in step.
+12. **Licence:** MIT.
+13. **Relay OIDC:** check ID-token signatures against the provider's published keys.
+14. **Rune layout fix:** goes upstream. Rune's `dev` already handles taffy's balanced-wrap variants, so the work is a Rune bump that drops `vendor/rune-taffy`.
+15. **`:theme`:** the choice is saved to `config.toml` (`[ui].theme`), editing only that value and keeping the rest of the file.
+16. **Stalwart in CI:** taken from its container image (`tools/stalwart.sh`).
+

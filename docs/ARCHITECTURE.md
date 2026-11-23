@@ -469,7 +469,7 @@ All foreground roles in both themes pass 4.5:1 against the background. "Follow s
 
 1. **Theme files** (TOML) override any subset of `[palette]`, `[roles]` and `[ui]` over a named `base`; unknown keys are rejected and missing keys fall back to the base.
 2. **Import** from Ghostty (implemented), Alacritty, iTerm2, Kitty, Windows Terminal and the reference IDE's YAML; ANSI 0–15 map onto the 16 names.
-3. **Switch live** with `:theme <name>` or the palette; theme files hot-reload when edited.
+3. **Switch live** with `:theme <name>` or the palette; the choice is saved as `[ui].theme` in `config.toml` (only that value is rewritten, comments kept). Theme files hot-reload when edited.
 4. **Settings → Appearance** edits palette swatches, roles, font and size, line height, window opacity and blur, wallpaper style and opacity, intro, and the HTML dark-mode option, then saves a theme file.
 5. **Contrast guardrail:** each role shows its contrast against the background; below 4.5:1 a "Fix contrast" button nudges OKLCH lightness until it passes (implemented and property-tested). Saving is never blocked.
 6. **Storage:** desktop config directory; on the web, the same TOML in the store, exportable as a file.
