@@ -162,7 +162,6 @@ pub enum Fx {
     /// Put a scroll view's top at this many rows down.
     ScrollRows(String, usize),
     ScrollTop(String),
-    ScrollBottom(String),
     WakeAt(f64),
     /// The theme changed: let colours ease.
     ThemeChanged,

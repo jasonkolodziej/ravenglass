@@ -163,6 +163,7 @@ fn t_flips_the_reader_view_flag() {
     assert_eq!(s.reader_view, ReaderView::Html, "HTML is the product default");
     keys(&mut s, "t");
     assert_eq!(s.reader_view, ReaderView::Text);
+    assert_eq!(toast(&s), "reader view: text");
     keys(&mut s, "t");
     assert_eq!(s.reader_view, ReaderView::Html);
 }

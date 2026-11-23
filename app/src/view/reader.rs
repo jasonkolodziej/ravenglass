@@ -68,7 +68,9 @@ pub fn pane(s: &AppState, ui: &Rc<Ui>, pane: u32, area: Rect) -> El {
     let from_text = from.map(address).unwrap_or_default();
     let mut first = Line::new().gap(PAD).put(&grid::fit("From:", KEY_COLS), p.header_key);
     if value_cols > toggle_cols + 12 {
-        let (html, text) = match s.reader_view { ReaderView::Html => (p.text, p.muted), ReaderView::Text => (p.muted, p.text) };
+        // Bright is the view on screen: HTML only for a message that has it, with the HTML view on.
+        let shows_html = body.is_some_and(|b| matches!(surface(s.reader_view, &b.text, b.html.as_ref()), Surface::Html { .. }));
+        let (html, text) = if shows_html { (p.text, p.muted) } else { (p.muted, p.text) };
         first = first.put(&grid::clip(&from_text, value_cols - toggle_cols - 2), p.text).to(cols - PAD - toggle_cols + 1);
         first = first.put("view: ", p.muted).put("html", html).put(" │ ", p.muted).put("t ", p.muted).put("text", text);
     } else {

@@ -53,7 +53,6 @@ pub fn flush(s: &mut AppState, tx: &mut Tx) {
             Fx::Reveal(key) => tx.scroll_into_view(key),
             Fx::ScrollRows(key, rows) => tx.scroll_to(key, 0.0, s.frame.get().grid.y(rows)),
             Fx::ScrollTop(key) => tx.scroll_to_y(key, 0.0),
-            Fx::ScrollBottom(key) => tx.scroll_to_bottom(key),
             Fx::WakeAt(due) => tx.wake_at(due),
             Fx::ThemeChanged => tx.color_motion(rune::tok::motion::CALM),
             Fx::Quit => tx.quit(),

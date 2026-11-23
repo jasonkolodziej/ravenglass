@@ -72,6 +72,18 @@ fn dates_read_as_the_grid_shows_them() {
     assert_eq!(timefmt::bytes(840_000), "840 KB");
 }
 
+#[test]
+fn the_html_surface_is_picked_only_for_html_mail_in_the_html_view() {
+    use crate::view::reader::{Surface, surface};
+    use mail_render::{SanitizedHtml, TextBody};
+    use ravenglass_engine::ReaderView;
+    let text = TextBody::from_plain("hello");
+    let html = SanitizedHtml { html: "<p>hello</p>".into(), remote_images: 0, trackers_removed: 0 };
+    assert!(matches!(surface(ReaderView::Html, &text, Some(&html)), Surface::Html { .. }));
+    assert!(matches!(surface(ReaderView::Text, &text, Some(&html)), Surface::Text(_)));
+    assert!(matches!(surface(ReaderView::Html, &text, None), Surface::Text(_)), "plain-text mail always uses the text view");
+}
+
 fn text(rows: &[Vec<(String, bool)>]) -> Vec<String> {
     rows.iter().map(|r| r.iter().map(|(t, _)| t.as_str()).collect()).collect()
 }

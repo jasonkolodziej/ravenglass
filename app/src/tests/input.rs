@@ -120,6 +120,7 @@ fn a_sequence_is_pending_until_it_resolves() {
     assert!(feed(&mut mode, &[ch('g'), ch('x')]).is_empty());
     assert!(mode.pending().is_empty());
     assert_eq!(feed(&mut mode, &[ctrl('w'), ch('l')]), [Effect::Act(Action::PaneFocus(Dir::Right))]);
+    assert_eq!(feed(&mut mode, &[ctrl('w'), ctrl('h')]), [Effect::Act(Action::PaneFocus(Dir::Left))], "Ctrl may stay held");
 }
 
 #[test]

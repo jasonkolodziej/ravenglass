@@ -204,6 +204,9 @@ pub fn step(mode: &mut Mode, key: KeyPress) -> Effects<Effect> {
 
 /// Adds `key` to an unfinished sequence and says what it now means, if anything yet.
 fn resolve(pending: &mut Vec<KeyPress>, key: KeyPress) -> Option<Action> {
+    // After `ctrl+w` the hand often still holds Ctrl for the next key: `ctrl+w ctrl+h` is `ctrl+w h`.
+    let held = pending.last().is_some_and(|p| p.ctrl) && key.ctrl && !key.alt;
+    let key = if held { KeyPress { ctrl: false, cmd: false, ..key } } else { key };
     pending.push(key);
     match keys::lookup(pending) {
         Lookup::Exact(action) => {

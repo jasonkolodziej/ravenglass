@@ -89,6 +89,7 @@ impl AppState {
             Action::Undo => self.undo_last(),
             Action::ToggleView => {
                 self.reader_view = match self.reader_view { ReaderView::Html => ReaderView::Text, ReaderView::Text => ReaderView::Html };
+                self.toast(match self.reader_view { ReaderView::Html => "reader view: html", ReaderView::Text => "reader view: text" });
                 if let Some(id) = self.ws().open.as_ref().map(|e| e.id.clone()) {
                     self.dispatch(Command::OpenMessage { id, view: self.reader_view });
                 }
