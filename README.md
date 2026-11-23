@@ -4,8 +4,8 @@ An all-Rust, cross-platform (macOS · Windows · Linux) mail client with a chara
 the [Rune](https://github.com/anomalyco/rune) GPU UI framework. HTML email is rendered with
 [Blitz](https://github.com/DioxusLabs/blitz).
 
-> **Status:** the desktop app runs end to end on Linux against a local test mail server. Nothing has
-> been built on macOS or Windows yet, no real mail provider has been used (IMAP is tested against GreenMail, JMAP only
+> **Status:** the desktop app runs end to end on Linux against a local test mail server. CI builds, tests
+> and takes headless snapshots on Linux, macOS and Windows, but nobody has used it in a real window on macOS or Windows, no real mail provider has been used (IMAP is tested against GreenMail, JMAP only
 > against an in-process server), and the web build only type-checks. Start with **[START_HERE.md](START_HERE.md)**.
 
 | Where | What |
