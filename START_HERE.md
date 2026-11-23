@@ -47,5 +47,5 @@ Keep the `[patch.crates-io]` table in the root `Cargo.toml` in sync with Rune's 
 ## 4. Decisions (plan §8)
 - **Round 1:** any modern provider including custom hosts · HTML is the default reader view · both dark-mode HTML treatments ship as a setting · biometric lock is in v1.
 - **Round 2:** a local passcode opens the lock when nothing else can · mail syncs while locked and only keys count as activity · the paper card stays the dark-mode default · the Relay serves both self-hosters (one shared token) and a multi-user instance · web build, packaging and real-server tests all go ahead.
-- **Round 3:** Jason registers the OAuth clients · identity placeholders stay, in `packaging/identity.toml` · licence MIT · the Relay checks OIDC ID-token signatures · the Rune layout fix goes upstream · `:theme` is saved to `config.toml` · Stalwart for CI comes from its container image.
+- **Round 3:** Jason registers the OAuth clients · identity placeholders stay, in `packaging/identity.toml` · licence MIT · the Relay checks OIDC ID-token signatures (on by default, `docs/RELAY.md`) · the Rune layout fix goes upstream · `:theme` is saved to `config.toml` · Stalwart for CI comes from its container image.
 Choices made without asking are in `.github/plans/0001-ravenglass-build-decisions.md`.
