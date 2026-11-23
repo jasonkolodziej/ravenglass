@@ -16,8 +16,8 @@ fn client_variables(provider: Provider) -> (&'static str, &'static str) {
 pub fn requirements(provider: Provider) -> String {
     let (id, secret) = client_variables(provider);
     match provider {
-        Provider::Google => format!("set {id} to the client id of a Google Cloud OAuth client of type \"Desktop app\" with the Gmail API scope https://mail.google.com/, and {secret} to its client secret (Google requires it even for desktop apps)"),
-        Provider::Microsoft => format!("set {id} to the application (client) id of a Microsoft Entra app registration with a \"Mobile and desktop\" redirect URI http://localhost and the delegated permissions IMAP.AccessAsUser.All, SMTP.Send and offline_access ({secret} only if the registration is a confidential client)"),
+        Provider::Google => format!("set {id} to the client id of a Google Cloud OAuth client of type \"Desktop app\" with the Gmail API scope https://mail.google.com/ (add the account under Test users while the consent screen is in testing); {secret} is optional for desktop clients and sent only if set"),
+        Provider::Microsoft => format!("set {id} to the application (client) id of a Microsoft Entra app registration with a \"Mobile and desktop applications\" redirect URI http://127.0.0.1 (any port) and the delegated permissions IMAP.AccessAsUser.All, SMTP.Send and offline_access ({secret} only if the registration is a confidential client)"),
     }
 }
 
@@ -39,7 +39,8 @@ pub fn sign_in(provider: Provider) -> Result<String, String> {
     let query = redirect.wait().map_err(|e| e.to_string())?;
     let code = attempt.code(&query).map_err(|e| e.to_string())?;
     let mut body = attempt.token_request(&client_id, &redirect_uri, &code);
-    // mail_auth's request has no client secret: Ravenglass's own clients will be public ones.
+    // mail_auth's request has no client secret: Ravenglass's own clients are public ones (PKCE).
+    // Some registrations still expect one; it is added only when given.
     if let Some(secret) = client_secret { body.push_str(&format!("&client_secret={}", oauth::form_encode(&secret))); }
     let post = ravenglass_accounts::http::form_post();
     let answer = post(provider.endpoints().token, &body).map_err(|e| format!("the token request failed: {}", e.chars().take(120).collect::<String>()))?;

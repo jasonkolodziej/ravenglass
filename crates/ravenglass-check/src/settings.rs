@@ -24,7 +24,7 @@ pub struct Plan {
     pub oauth: Option<Provider>,
     /// Where the settings came from, for the report.
     pub source: &'static str,
-    /// The address's domain, masked wherever a host name contains it.
+    /// The address's domain, masked wherever a host name contains it (empty for a known provider).
     pub domain: String,
     /// Extra trust anchors (DER) from `--ca`.
     pub roots: Vec<Vec<u8>>,
@@ -72,10 +72,15 @@ pub fn resolve(args: &Args) -> Result<Plan, String> {
         None => Vec::new(),
     };
     let login = args.login.clone().or_else(|| found.as_ref().map(|s| s.username.clone())).unwrap_or_else(|| args.address.trim().to_owned());
+    // A known provider's hosts (imap.gmail.com) say nothing about the user: show them as they are.
+    let domain = if found.as_ref().is_some_and(|s| s.source == Source::Builtin) { String::new() } else { domain };
     let mut plan = Plan { servers, login, oauth, source, domain, roots, skip_smtp: args.no_smtp };
     show(&plan, &args.address);
     if let Some(found) = &found && !matches!(found.auth, AuthKind::Password) && plan.oauth.is_none() {
         line("note", "this provider signs in with OAuth; with a password expect an app password to be required (see docs/CHECKING-ACCOUNTS.md), or pass --oauth");
+    }
+    if let Servers::Jmap { session_url } = &plan.servers && session_url.contains("fastmail.com") && !args.token && plan.oauth.is_none() {
+        line("note", "Fastmail's JMAP takes an API token (pass --token), not an app password; for IMAP with an app password use --imap imap.fastmail.com:993 --smtp smtp.fastmail.com:465");
     }
     if !args.yes {
         if !std::io::stdin().is_terminal() { return Err("confirm the settings interactively, or pass --yes".into()); }
@@ -101,6 +106,7 @@ fn provider_for(servers: &Servers) -> Option<Provider> {
 /// A host name for the report: the user's own domain is masked, a provider's host is not.
 pub fn host_label(host: &str, domain: &str) -> String {
     let host = host.to_ascii_lowercase();
+    if domain.is_empty() { return host; }
     if host == domain { return "<your domain>".into(); }
     match host.strip_suffix(domain).filter(|rest| rest.ends_with('.')) {
         Some(rest) => format!("{rest}<your domain>"),

@@ -27,6 +27,7 @@ fn the_users_domain_is_masked_and_providers_are_not() {
     assert_eq!(host_label("Mail.Example.org", "example.org"), "mail.<your domain>");
     assert_eq!(host_label("example.org", "example.org"), "<your domain>");
     assert_eq!(host_label("imap.gmail.com", "example.org"), "imap.gmail.com");
+    assert_eq!(host_label("imap.gmail.com", ""), "imap.gmail.com", "a known provider is shown as it is");
     // A host that only ends with the same letters is not the domain.
     assert_eq!(host_label("imap.notexample.org", "example.org"), "imap.notexample.org");
     assert_eq!(describe(&Endpoint::new("smtp.example.org", 587, Security::StartTls), "example.org"), "smtp.<your domain>:587 STARTTLS");
