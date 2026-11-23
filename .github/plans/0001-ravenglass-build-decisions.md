@@ -8,7 +8,7 @@ in place of asking, with the reason and the cost of changing course. Product dec
 
 | # | Decision | Why | Reopen when |
 |---|---|---|---|
-| 1 | Vendor Rune's `rune-taffy` with one extra match arm (`vendor/rune-taffy`) | Blitz enables a Taffy feature that breaks Rune's exhaustive match; without the arm they cannot link into one binary | Rune handles `FlexWrap::Balance` itself; then delete the patch |
+| 1 | Vendor Rune's `rune-taffy` with one extra match arm (`vendor/rune-taffy`) | Blitz enables a Taffy feature that breaks Rune's exhaustive match; without the arm they cannot link into one binary | **Closed 2026-11-23:** Rune `dev` @ `5e527e71` spills unknown `FlexWrap` variants itself (`encode_wrap` in `crates/rune-taffy/src/style/mod.rs`); the patch and `vendor/rune-taffy` are gone |
 | 2 | Blitz documents live on one render thread behind a `Renderer` handle | They are not `Send`, and a panic must cost only one view | Blitz documents become `Send`, or a worker pool is needed for speed |
 | 3 | Refuse HTML taller than 60,000 px or with a non-finite size | Painting one panics inside the rasteriser | The rasteriser stops panicking; raise or drop the cap |
 | 4 | "Darken" inverts lightness after painting, photos included | It needs nothing from Blitz and cannot leak | Blitz supports CSS filters well enough to exempt images |

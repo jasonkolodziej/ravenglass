@@ -6,6 +6,10 @@
 time budget, and the bitmap shows in a Rune window through `rune::Pixels`. Blitz and Rune do not compile into one binary
 as they stand; a one-line change to Rune's `rune-taffy` crate fixes it.
 
+**Update (2026-11-23):** that fix is upstream. From Rune `dev` @ `5e527e71`, `encode_wrap` spills unknown `FlexWrap`
+variants to `extra` itself, so the spike and the app both build against Rune unmodified and `vendor/rune-taffy` is gone.
+The findings below are as they were at `0ca07561`.
+
 Run it: `cd spikes/blitz/blitz-spike && cargo run --release -- ../../../fixtures/emails out`, or
 `SPIKE_EML=../../../fixtures/emails/02-newsletter-tables.eml cargo run --release -- --snap out/window.png`.
 

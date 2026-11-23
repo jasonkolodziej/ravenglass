@@ -1,7 +1,7 @@
 # Reference links
 
 ## Framework: Rune (Rust, MIT): what we build on
-- Repo: https://github.com/anomalyco/rune (pinned rev `0ca075619d116f8f6e0e3bc8ff815c72c636cac8`)
+- Repo: https://github.com/anomalyco/rune (pinned rev `5e527e71926906f3fd23d0e2781b64742d938f71`)
 - Copied here at that rev: `rune-core-README.md`, `rune-kit-README.md`, `rune-AGENTS.md`, `rune-hello-main.rs`
 - Worth reading in the repo: `examples/hello`, `examples/settings`, `examples/todo`, `crates/rune-kit/examples/shell.rs`, `examples/frosted-bar`, `examples/video-tiles` (the Pixels/NativeSurface boundary)
 

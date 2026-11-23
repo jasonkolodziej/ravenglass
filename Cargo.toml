@@ -30,9 +30,9 @@ publish = false
 rust-version = "1.99"
 
 [workspace.dependencies]
-# Rune — pin a dev rev; dev is never rewritten. Bump all five lines together.
-rune     = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
-rune-kit = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
+# Rune — pin a dev rev; dev is never rewritten. Bump every Rune git line (here and in `[patch.crates-io]`) together.
+rune     = { git = "https://github.com/anomalyco/rune", rev = "5e527e71926906f3fd23d0e2781b64742d938f71" }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "5e527e71926906f3fd23d0e2781b64742d938f71" }
 serde    = { version = "1", features = ["derive"] }
 toml     = "0.8"
 thiserror = "2"
@@ -87,18 +87,18 @@ rpassword = "7"
 
 [patch.crates-io]
 # Required: apps that build Rune patch the same crates, from the same rev (see docs/reference/rune-core-README.md, "Depending on Rune").
-# Re-check this list against Rune's root Cargo.toml whenever the rev changes.
-winit             = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
-parley_engine     = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
-wgpu-hal          = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
-accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6e0e3bc8ff815c72c636cac8" }
+# Re-check this list against Rune's root Cargo.toml whenever the rev changes. Each crate lives in Rune's
+# `vendor/` directory; Cargo finds it in the git repo by name.
+wgpu-hal          = { git = "https://github.com/anomalyco/rune", rev = "5e527e71926906f3fd23d0e2781b64742d938f71" }
+winit             = { git = "https://github.com/anomalyco/rune", rev = "5e527e71926906f3fd23d0e2781b64742d938f71" }
+sctk-adwaita      = { git = "https://github.com/anomalyco/rune", rev = "5e527e71926906f3fd23d0e2781b64742d938f71" }
+parley_engine     = { git = "https://github.com/anomalyco/rune", rev = "5e527e71926906f3fd23d0e2781b64742d938f71" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "5e527e71926906f3fd23d0e2781b64742d938f71" }
+accesskit_macos   = { git = "https://github.com/anomalyco/rune", rev = "5e527e71926906f3fd23d0e2781b64742d938f71" }
 
-# Blitz turns on taffy's `flexbox_balance` feature, which adds two `FlexWrap` variants that
-# rune-taffy's exhaustive match does not cover (spikes/blitz/REPORT.md). `vendor/rune-taffy` is
-# Rune's crate at the pinned rev plus a catch-all arm. Re-copy it on every Rune bump, and drop
-# this patch once Rune handles the variants itself.
-[patch."https://github.com/anomalyco/rune"]
-rune-taffy = { path = "vendor/rune-taffy" }
+# Blitz turns on taffy's `flexbox_balance` feature, which adds two `FlexWrap` variants. Rune's
+# `rune-taffy` once matched `FlexWrap` exhaustively and we vendored it with a catch-all arm. Since
+# this rev, upstream spills unknown variants to `extra` itself, so no patch is needed.
 
 # Argon2 is deliberately slow; unoptimised it takes seconds per hash in debug builds and tests.
 [profile.dev.package.argon2]
