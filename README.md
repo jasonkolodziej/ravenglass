@@ -21,7 +21,8 @@ the [Rune](https://github.com/anomalyco/rune) GPU UI framework. HTML email is re
 | `brand/` | Generator scripts (Python) and preview PNGs of the icon and UI |
 | `spikes/blitz/` | The M1 de-risking spike brief |
 | `fixtures/emails/` | Sample `.eml` files; grow to the 30-email corpus in M6 |
-| `tools/` | Local Greenmail IMAP/SMTP server for integration tests |
+| `tools/` | Local test mail servers for integration tests |
+| `packaging/` | Icons, bundle config (macOS, Windows MSI, Linux .deb/AppImage, Flatpak), the Relay container; see `packaging/README.md` |
 
 ## Crates
 
@@ -41,7 +42,7 @@ the [Rune](https://github.com/anomalyco/rune) GPU UI framework. HTML email is re
 | `mail-render` | Engine | MIME parse, part choice, HTML sanitizer, text view, HTML to text, message building, replies and forwards |
 | `mail-blitz` | Engine | Blitz host: layout, RGBA tiles, deny-by-default images, link hit-testing, darken, render thread |
 | `ravenglass-engine` | Engine | Command/Event loop: sync, push and polling, optimistic actions with journal and undo, reader, HTML views, drafts, outbox, search; desktop runner thread |
-| `ravenglass-relay` | Relay | Request handling plus an HTTP/WebSocket server with a shared token and CORS; no per-user sign-in, image proxy or Web Push |
+| `ravenglass-relay` | Relay | HTTP/WebSocket server in two modes: a shared token for one person, or `users` mode with password or OIDC sign-in, sessions, CSRF, per-user encrypted accounts and an SSRF-safe image proxy. See `docs/RELAY.md`. No Web Push yet |
 | `ravenglass` (`app/`) | App | Grid UI: list, reader (text and HTML), compose with undo send, modes, command line, palette, panes, workspaces; real accounts from a profile on disk, add-account flow, settings, user themes, app lock. `--demo` runs on sample mail |
 
 ```sh

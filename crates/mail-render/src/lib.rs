@@ -6,6 +6,7 @@
 
 pub mod compose;
 mod css;
+pub mod mailto;
 mod html_text;
 mod sanitize;
 mod text;

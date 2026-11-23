@@ -193,3 +193,45 @@ mod compose_tests {
         assert!(r.body.contains("> Blitz 0.3 is out") && !r.body.contains('<'), "{}", r.body);
     }
 }
+
+mod mailto_tests {
+    use crate::mailto::{Mailto, encode, unwrap_link};
+    use mail_core::{AccountId, Address, Draft, DraftId};
+
+    #[test]
+    fn links_fill_recipients_subject_and_body() {
+        let m = Mailto::parse("mailto:odin@asgard.example,huginn@ravens.example?cc=Muninn%20%3Cmuninn@ravens.example%3E&subject=Gr%C3%B6%C3%9Fe%20%E2%9C%93&body=line%201%0D%0Aline%202").unwrap();
+        assert_eq!(m.to.iter().map(|a| a.email.as_str()).collect::<Vec<_>>(), ["odin@asgard.example", "huginn@ravens.example"]);
+        assert_eq!(m.cc, [Address::new("Muninn", "muninn@ravens.example")]);
+        assert_eq!((m.subject.as_deref(), m.body.as_deref()), (Some("Größe ✓"), Some("line 1\nline 2")));
+        let mut draft = Draft::new(DraftId::from("d"), AccountId::from("a"), Address::new("Me", "me@example.com"));
+        m.apply(&mut draft);
+        assert_eq!((draft.to.len(), draft.subject.as_str()), (2, "Größe ✓"));
+        assert_eq!(Mailto::parse("MAILTO:?to=a@b.example").unwrap().to.len(), 1, "case and an empty path are fine");
+    }
+
+    #[test]
+    fn hostile_links_fill_nothing_dangerous() {
+        let m = Mailto::parse("mailto:a@b.example?In-Reply-To=%3Cx%40y%3E&from=boss@corp.example&bcc=spy@evil.example&subject=hi%0D%0ABcc:%20x@y.example").unwrap();
+        assert_eq!(m.bcc.len(), 1, "a Bcc is shown in the draft, never hidden");
+        assert_eq!(m.subject.as_deref(), Some("hiBcc: x@y.example"), "no header injection through line breaks");
+        for bad in ["mailto:not-an-address", "mailto:a b@c.example", "mailto:a@b", "mailto:<a@b.example", "mailto:a@b.example%"] {
+            assert!(Mailto::parse(bad).is_none_or(|m| m.to.is_empty()), "{bad}");
+        }
+        assert!(Mailto::parse("https://example.com").is_none());
+        assert!(Mailto::parse("mailto:%FF@x.example").is_none(), "not UTF-8");
+        assert!(Mailto::parse(&format!("mailto:a@b.example?body={}", "x".repeat(70_000))).is_none(), "too large");
+        let many: Vec<String> = (0..300).map(|i| format!("u{i}@x.example")).collect();
+        assert_eq!(Mailto::parse(&format!("mailto:{}", many.join(","))).unwrap().to.len(), 100);
+    }
+
+    #[test]
+    fn links_travel_inside_the_apps_own_scheme() {
+        let link = "mailto:odin@asgard.example?subject=a%26b";
+        let wrapped = format!("ravenglass://mailto?u={}", encode(link));
+        assert_eq!(unwrap_link(&wrapped).as_deref(), Some(link));
+        assert_eq!(unwrap_link(link).as_deref(), Some(link));
+        assert_eq!(unwrap_link("ravenglass://mailto?u=https%3A%2F%2Fevil.example"), None);
+        assert_eq!(unwrap_link("ravenglass://other"), None);
+    }
+}

@@ -21,6 +21,7 @@ mod keymap;
 mod keys;
 mod link;
 mod links;
+mod links_in;
 mod lock;
 mod modes;
 mod panes;
@@ -87,6 +88,7 @@ fn poll(s: &mut AppState, clock: f64, tx: &mut Tx) -> bool {
         }
         Boot::Armed => {
             s.start_engine();
+            s.open_waiting_link();
             changed = true;
         }
         Boot::Started => {}
@@ -126,5 +128,12 @@ fn main() {
         println!("ravenglass {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    rune::run(spec());
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !rune::tooling::is_headless() {
+        // A `mailto:` launch on Windows or Linux restarts as a link Rune can hand on.
+        if links_in::relay_launch_link(&args) { return; }
+        // Another Ravenglass already runs: this launch's links went to it.
+        if !rune::single_instance(links_in::APP_ID) { return; }
+    }
+    rune::App::new(spec()).on_open_url(links_in::on_open_url).run();
 }

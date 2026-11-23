@@ -12,7 +12,9 @@ Checked with Rust 1.99.1: by hand on Linux, and by CI (tests, lint, headless sna
 
 **Not verified anywhere:** the app in a real window on macOS or Windows; any real mail provider; JMAP against a real server; STARTTLS upgrades; the Relay's push socket; the OS keyring; OAuth against Google or Microsoft (no client id exists); autoconfig lookups over the network; the app in a real window with a keyboard (it was run under a virtual display and driven headlessly).
 
-**Not started:** Touch ID and Windows Hello (the lock asks for the app passcode, `:lock passcode`, or an account password instead, and will not close if neither exists), the wallpaper intro animation, threads, context menus, a settings page with forms (settings are `config.toml` and `:` commands), packaging and signing, the web app shell, service worker and PWA, per-user Relay sign-in, the Relay image proxy and Web Push.
+**Packaging:** Linux `.deb` and AppImage built and run here; macOS, Windows, the Relay image and signing run only in `.github/workflows/release.yml` (see `packaging/README.md`).
+
+**Not started:** Touch ID and Windows Hello (the lock asks for the app passcode, `:lock passcode`, or an account password instead, and will not close if neither exists), the wallpaper intro animation, threads, context menus, a settings page with forms (settings are `config.toml` and `:` commands), Web Push.
 
 ## 1. Set up
 ```sh

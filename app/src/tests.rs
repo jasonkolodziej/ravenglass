@@ -22,3 +22,5 @@ mod accounts;
 mod lock;
 #[path = "tests/greenmail.rs"]
 mod greenmail;
+#[path = "tests/links_in.rs"]
+mod links_in;

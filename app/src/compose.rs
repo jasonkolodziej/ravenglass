@@ -187,9 +187,16 @@ pub struct Compose {
     shown_secs: Option<u64>,
     /// Stands in for a field when no draft is open.
     scratch: TextEdit,
+    /// A `mailto:` link waiting for the draft it asked for (`links_in.rs`).
+    pub prefill: Option<mail_render::mailto::Mailto>,
+    /// A `mailto:` link that arrived before the engine started.
+    pub waiting_link: Option<mail_render::mailto::Mailto>,
 }
 
 impl Compose {
+    /// A `StartDraft` is in flight.
+    pub fn is_opening(&self) -> bool { self.opening.is_some() }
+
     pub fn current(&self) -> Option<&Composer> { self.drafts.get(self.active) }
     pub fn current_mut(&mut self) -> Option<&mut Composer> { self.drafts.get_mut(self.active) }
 
@@ -279,8 +286,13 @@ impl AppState {
     // ── engine events ──────────────────────────────────────────────────────────────────────
 
     /// A draft the engine opened: the one just asked for, or one kept from an earlier run.
-    pub fn fold_draft(&mut self, draft: Draft) {
+    pub fn fold_draft(&mut self, mut draft: Draft) {
         let asked = self.compose.opening.as_ref() == Some(&draft.id);
+        // A draft started from a `mailto:` link: fill it in, and let the engine keep the result.
+        if asked && let Some(link) = self.compose.prefill.take() {
+            link.apply(&mut draft);
+            self.dispatch(Command::EditDraft(Box::new(draft.clone())));
+        }
         let index = match self.compose.find(&draft.id) {
             Some(index) => index,
             None => {
