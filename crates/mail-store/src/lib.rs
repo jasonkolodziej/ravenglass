@@ -94,6 +94,22 @@ impl Store {
         found.into_iter().collect()
     }
 
+    /// Forget an account: its folders, messages, cached bodies, search entries and drafts.
+    /// Contacts and the image allow list are kept; they are the user's, not the account's.
+    pub fn remove_account(&mut self, account: &AccountId) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute("DELETE FROM search WHERE rowid IN (SELECT rowid FROM messages WHERE account = ?1)", [&account.0])?;
+        tx.execute("DELETE FROM bodies WHERE message_id IN (SELECT id FROM messages WHERE account = ?1)", [&account.0])?;
+        tx.execute("DELETE FROM messages WHERE account = ?1", [&account.0])?;
+        tx.execute("DELETE FROM folders WHERE account = ?1", [&account.0])?;
+        tx.execute("DELETE FROM accounts WHERE id = ?1", [&account.0])?;
+        // Drafts and journaled actions are JSON owned by the engine; both name their account.
+        let needle = format!("%\"account\":{}%", serde_json::to_string(&account.0)?);
+        tx.execute("DELETE FROM drafts WHERE draft LIKE ?1", [&needle])?;
+        tx.execute("DELETE FROM ops_journal WHERE op LIKE ?1", [&needle])?;
+        Ok(tx.commit()?)
+    }
+
     pub fn sync_token(&self, folder: &FolderId) -> Result<SyncToken> {
         let token = self.conn.query_row("SELECT sync_token FROM folders WHERE id = ?1", [&folder.0], |r| r.get(0)).optional()?;
         Ok(SyncToken(token.unwrap_or_default()))

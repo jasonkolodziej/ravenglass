@@ -122,25 +122,33 @@ impl Engine {
             }
             Command::OpenMessage { id, view } => self.open_message(id, view, out).await,
             Command::SetFlags { ids, add, remove } => {
-                let Some((account, envelopes)) = self.resolve(&ids)? else { return Ok(()) };
+                let Some((account, envelopes)) = self.resolve(&ids)? else { out.push(Event::Unchanged); return Ok(()) };
                 let before = envelopes.into_iter().map(|e| (e.id, e.flags)).collect();
                 self.apply(Op::SetFlags { account, before, add, remove }, out).await
             }
             Command::Move { ids, to } => {
-                let Some((account, envelopes)) = self.resolve(&ids)? else { return Ok(()) };
+                let Some((account, envelopes)) = self.resolve(&ids)? else { out.push(Event::Unchanged); return Ok(()) };
                 let from: Vec<_> = envelopes.into_iter().filter(|e| e.folder != to).map(|e| (e.id, e.folder)).collect();
-                if from.is_empty() { return Ok(()); }
+                if from.is_empty() { out.push(Event::Unchanged); return Ok(()); }
                 self.apply(Op::Move { account, from, to }, out).await
             }
             Command::MoveToRole { ids, role } => {
-                let Some((account, envelopes)) = self.resolve(&ids)? else { return Ok(()) };
+                let Some((account, envelopes)) = self.resolve(&ids)? else { out.push(Event::Unchanged); return Ok(()) };
                 let folders = self.store.folders(&account).map_err(text)?;
                 let to = folders.into_iter().find(|f| f.role == role).ok_or_else(|| format!("this account has no {role:?} folder"))?.id;
                 let from: Vec<_> = envelopes.into_iter().filter(|e| e.folder != to).map(|e| (e.id, e.folder)).collect();
-                if from.is_empty() { return Ok(()); }
+                if from.is_empty() { out.push(Event::Unchanged); return Ok(()); }
                 self.apply(Op::Move { account, from, to }, out).await
             }
             Command::Undo(op) => self.undo(op, out).await,
+            Command::RemoveAccount(account) => {
+                self.accounts.remove(&account).ok_or("unknown account")?;
+                self.outbox.retain(|_, item| item.account != account);
+                self.history.retain(|_, done| done.op.account() != &account);
+                self.store.remove_account(&account).map_err(text)?;
+                out.push(Event::AccountRemoved(account));
+                Ok(())
+            }
             Command::Search { query, account, limit } => {
                 let envelopes = self.store.search(&Query::parse(&query), account.as_ref(), limit.min(PAGE)).map_err(text)?;
                 out.push(Event::SearchResults { query, envelopes });
@@ -448,7 +456,7 @@ fn command_name(cmd: &Command) -> &'static str {
     match cmd {
         Command::OpenAccount(_) => "open account", Command::Refresh(_) => "refresh", Command::LoadRange { .. } => "load messages",
         Command::OpenMessage { .. } => "open message", Command::SetFlags { .. } => "set flags", Command::Move { .. } | Command::MoveToRole { .. } => "move",
-        Command::Undo(_) => "undo", Command::Search { .. } => "search", Command::Send { .. } => "send", Command::CancelSend(_) => "cancel send",
+        Command::Undo(_) => "undo", Command::RemoveAccount(_) => "remove account", Command::Search { .. } => "search", Command::Send { .. } => "send", Command::CancelSend(_) => "cancel send",
         Command::RetrySend(_) => "retry send", Command::AllowImages { .. } => "allow images", Command::CompleteAddress { .. } => "complete address", Command::Tick => "timers",
         Command::StartDraft { .. } | Command::EditDraft(_) | Command::LoadDrafts => "draft", Command::SendDraft(_) => "send draft", Command::DiscardDraft(_) => "discard draft",
         Command::RenderHtml { .. } | Command::ResizeHtml { .. } | Command::HtmlTile { .. } | Command::HtmlPointer { .. } | Command::CloseHtml(_) => "render HTML",

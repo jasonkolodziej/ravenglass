@@ -171,7 +171,9 @@ impl AppState {
                 }
                 self.error(format!("{context}: {message}"));
             }
-            Event::OutboxState { .. } | Event::ImagesAllowed { .. } | Event::Addresses { .. } | Event::WakeAt(_) | Event::Watch { .. } => {}
+            Event::OutboxState { .. } | Event::ImagesAllowed { .. } | Event::Addresses { .. } | Event::WakeAt(_) | Event::Watch { .. } | Event::AccountRemoved(_) => {}
+            // Nothing was journaled, so no `Applied` will answer the pending action.
+            Event::Unchanged => { self.pending.pop_front(); }
             // Compose is not drawn yet; its events have nowhere to go.
             Event::Draft(_) | Event::DraftSaved { .. } | Event::DraftClosed { .. } | Event::LinkHover { .. } => {}
             Event::HtmlLaidOut { info, .. } => {

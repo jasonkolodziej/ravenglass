@@ -433,3 +433,17 @@ fn remote_images_load_only_after_the_user_allows_them() {
     run(&mut engine, Command::CloseHtml(view));
     assert_eq!(run(&mut engine, Command::AllowImages { message, scope: mail_core::machine::image_load::Scope::Once }).len(), 1, "a closed view is not rendered");
 }
+
+#[test]
+fn actions_that_change_nothing_say_so_and_a_removed_account_is_forgotten() {
+    let mut rig = Rig::synced();
+    let first = rig.page().remove(0);
+    let archive = Command::MoveToRole { ids: vec![first.id.clone()], role: FolderRole::Archive };
+    applied(&rig.run(archive.clone()));
+    assert_eq!(rig.run(archive), [Event::Unchanged], "already archived");
+    assert_eq!(rig.run(Command::SetFlags { ids: vec![MessageId::from("nope")], add: Flags::SEEN, remove: Flags::empty() }), [Event::Unchanged]);
+
+    assert_eq!(rig.run(Command::RemoveAccount(rig.account.clone())), [Event::AccountRemoved(rig.account.clone())]);
+    assert!(rig.engine.store().folders(&rig.account).unwrap().is_empty());
+    assert!(matches!(rig.run(Command::OpenAccount(rig.account.clone())).as_slice(), [Event::Error { .. }]));
+}

@@ -147,3 +147,29 @@ fn search_10k_messages_within_budget() {
     eprintln!("search over 10k messages: {per_query:?} per query");
     assert!(per_query.as_millis() < 250, "{per_query:?}");
 }
+
+#[test]
+fn removing_an_account_leaves_no_trace_of_its_mail_and_keeps_the_others() {
+    let (mut store, keep) = seeded("iCloud", 30);
+    let gone = AccountId::from("Gmail");
+    let backend = MockBackend::new("Gmail", 7, 20);
+    let folders = block_on(backend.list_folders()).unwrap();
+    store.upsert_folders(&folders).unwrap();
+    for f in &folders {
+        let delta = block_on(backend.sync_folder(&f.id, &SyncToken::default())).unwrap();
+        store.apply_delta(&gone, &f.id, &delta).unwrap();
+    }
+    let theirs = store.envelopes(&inbox("Gmail"), 0, 1).unwrap().remove(0);
+    store.put_body(&RawMessage { id: theirs.id.clone(), bytes: b"raw".to_vec() }, "xyzzy body text").unwrap();
+    store.put_draft(&DraftId::from("d1"), r#"{"id":"d1","account":"Gmail","subject":"s"}"#).unwrap();
+    store.put_draft(&DraftId::from("d2"), r#"{"id":"d2","account":"iCloud","subject":"mentions Gmail"}"#).unwrap();
+    store.journal_push(r#"{"Move":{"account":"Gmail","from":[],"to":"x"}}"#).unwrap();
+
+    store.remove_account(&gone).unwrap();
+    assert!(store.folders(&gone).unwrap().is_empty() && store.envelope(&theirs.id).unwrap().is_none());
+    assert!(store.body(&theirs.id).unwrap().is_none() && store.search(&Query::parse("xyzzy"), None, 10).unwrap().is_empty());
+    assert_eq!(store.search(&Query::default(), None, 500).unwrap().len(), 30, "the other account is untouched");
+    assert_eq!(store.folders(&keep).unwrap().iter().map(|f| f.total).sum::<u32>(), 30);
+    assert_eq!(store.drafts().unwrap().len(), 1, "only the removed account's draft goes");
+    assert!(store.journal_pending().unwrap().is_empty());
+}

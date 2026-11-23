@@ -64,6 +64,9 @@ pub enum Command {
     /// The pointer is at this point of the document, in CSS pixels.
     HtmlPointer { view: ViewId, x: f32, y: f32 },
     CloseHtml(ViewId),
+    /// Stop using an account and forget its cached mail. Its settings and secrets are the
+    /// caller's to remove.
+    RemoveAccount(AccountId),
     /// Deliver due timers. The runner sends it when the earliest [`Event::WakeAt`] passes.
     Tick,
 }
@@ -76,6 +79,10 @@ pub enum Event {
     SyncState { account: AccountId, state: account_sync::State },
     /// The action is applied locally and journaled. `sent` is false while it waits for the server.
     Applied { op: OpId, sent: bool },
+    /// The action asked for nothing new (already archived, no such message), so nothing was
+    /// journaled and no `Applied` follows.
+    Unchanged,
+    AccountRemoved(AccountId),
     /// The server refused the action, so the local change was undone.
     Reverted { op: OpId, reason: String },
     Undone { op: OpId },
