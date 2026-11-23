@@ -9,6 +9,11 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: ["**"]
+    # A packaging change is checked by building everything (no signing secrets are needed, and
+    # nothing is published: publishing and image pushes run only on tags). GitHub ignores the path
+    # filter for tag pushes, so every v* tag still builds and releases.
+    paths: ["packaging/**", ".github/workflows/release.yml", "app/Cargo.toml", "brand/src/**"]
   workflow_dispatch:
 
 permissions:
