@@ -3,8 +3,12 @@
 //! has something better. The per-OS path functions are pure (they take the environment as an
 //! argument), so every platform's layout is compiled and tested on every platform.
 
+pub mod accounts;
 pub mod linux;
 pub mod macos;
+/// The browser: storage, the page's settings and links (the web build's "operating system").
+#[cfg(target_arch = "wasm32")]
+pub mod web;
 pub mod windows;
 
 use mail_auth::{SecretKind, SecretStore};
@@ -93,6 +97,24 @@ pub fn authenticate() -> Unlock {
     { Unlock::Password }
 }
 
+/// Where account secrets live: the OS keyring on desktop. The browser stores none (architecture
+/// §12): on the web they last only as long as the page.
+pub fn secret_store() -> std::sync::Arc<dyn SecretStore> {
+    #[cfg(not(target_arch = "wasm32"))]
+    { std::sync::Arc::new(mail_auth::secrets::KeyringSecrets::new()) }
+    #[cfg(target_arch = "wasm32")]
+    { std::sync::Arc::new(mail_auth::MemorySecrets::default()) }
+}
+
+/// How remote images the user allowed are fetched: HTTPS from this machine on desktop. The web
+/// has none yet; it will ask the Relay's image proxy (architecture §7).
+pub fn image_fetcher() -> Option<ravenglass_engine::ImageFetcher> {
+    #[cfg(not(target_arch = "wasm32"))]
+    { Some(ravenglass_engine::fetch::https_images()) }
+    #[cfg(target_arch = "wasm32")]
+    { None }
+}
+
 /// The portable unlock: `typed` against the stored password of `account`, compared in constant
 /// time. False when nothing is stored or the store cannot be read.
 pub fn check_password(secrets: &dyn SecretStore, account: &AccountId, typed: &str) -> bool {
@@ -137,7 +159,11 @@ pub fn open_link(url: &str) -> Result<(), String> {
         if let Ok(mut recorded) = RECORDED.lock() { recorded.push(url.to_owned()); }
         return Ok(());
     }
-    open::that_detached(url).map_err(|e| e.to_string())
+    #[cfg(not(target_arch = "wasm32"))]
+    { open::that_detached(url).map_err(|e| e.to_string()) }
+    // A new tab, without an opener or a referrer.
+    #[cfg(target_arch = "wasm32")]
+    { rune::web::open_url(url) }
 }
 
 /// What [`open_link`] recorded instead of opening, oldest first.

@@ -12,7 +12,7 @@ use crate::shell::Services;
 use mail_auth::AccountConfig;
 use mail_core::AccountId;
 use mail_store::Store;
-use ravenglass_accounts::{ConnectError, Connected, Connector};
+use crate::platform::accounts::{ConnectError, Connected, Connector};
 use ravenglass_engine::runner::{self, Handle};
 use ravenglass_engine::{Command, Config, Engine, Event};
 use std::path::PathBuf;
@@ -83,7 +83,7 @@ pub fn real_engine(spec: &EngineSpec, services: &Services, now: f64) -> Result<B
     }
     // Without a render thread HTML mail still opens, in the text view.
     if let Ok(renderer) = ravenglass_engine::Renderer::spawn() { engine.set_renderer(renderer); }
-    engine.set_image_fetcher(ravenglass_engine::fetch::https_images());
+    if let Some(fetcher) = crate::platform::image_fetcher() { engine.set_image_fetcher(fetcher); }
     Ok(Built { engine, connected, problems })
 }
 

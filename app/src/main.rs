@@ -35,6 +35,7 @@ mod state;
 mod timefmt;
 mod update;
 mod view;
+mod web;
 
 #[cfg(test)]
 mod tests;
@@ -128,12 +129,18 @@ fn main() {
         println!("ravenglass {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if !rune::tooling::is_headless() {
-        // A `mailto:` launch on Windows or Linux restarts as a link Rune can hand on.
-        if links_in::relay_launch_link(&args) { return; }
-        // Another Ravenglass already runs: this launch's links went to it.
-        if !rune::single_instance(links_in::APP_ID) { return; }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if !rune::tooling::is_headless() {
+            // A `mailto:` launch on Windows or Linux restarts as a link Rune can hand on.
+            if links_in::relay_launch_link(&args) { return; }
+            // Another Ravenglass already runs: this launch's links went to it.
+            if !rune::single_instance(links_in::APP_ID) { return; }
+        }
+        rune::App::new(spec()).on_open_url(links_in::on_open_url).run();
     }
-    rune::App::new(spec()).on_open_url(links_in::on_open_url).run();
+    // The page: the same app behind the Relay sign-in (`web/`).
+    #[cfg(target_arch = "wasm32")]
+    rune::run(web::spec());
 }

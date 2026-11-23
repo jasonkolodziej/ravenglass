@@ -10,6 +10,9 @@
 //! A link comes from outside the app: it only fills in a draft for the person to read, and only
 //! with recipients, a subject and a body (`mail_render::mailto`).
 
+// The web build gets links through the page, not the OS; its entry is `web::spec`.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code))]
+
 use crate::state::AppState;
 use mail_render::mailto::{self, Mailto};
 use rune::Tx;

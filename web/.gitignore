@@ -1,0 +1,4 @@
+# Build output of tools/web-build.sh (any --out under web/) and the e2e screenshots.
+/dist*/
+/tests/out/
+/tests/node_modules/

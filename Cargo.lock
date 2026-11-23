@@ -1842,8 +1842,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2783,6 +2785,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sqlite-wasm-rs",
  "thiserror 2.0.21",
 ]
 
@@ -4012,6 +4015,8 @@ checksum = "ca45419789ae5a7899559e9512e58ca889e41f04f1f2445e9f4b290ceccd1d08"
 name = "ravenglass"
 version = "0.0.0"
 dependencies = [
+ "getrandom 0.2.17",
+ "js-sys",
  "mail-auth",
  "mail-core",
  "mail-mock",
@@ -4023,9 +4028,15 @@ dependencies = [
  "ravenglass-config",
  "ravenglass-engine",
  "ravenglass-theme",
+ "relay-client",
+ "relay-proto",
  "rune",
  "serde",
+ "serde_json",
  "toml 0.8.23",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -4057,6 +4068,8 @@ dependencies = [
 name = "ravenglass-engine"
 version = "0.0.0"
 dependencies = [
+ "async-channel 2.5.0",
+ "js-sys",
  "mail-blitz",
  "mail-core",
  "mail-mock",
@@ -4066,6 +4079,8 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "ureq",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -4224,6 +4239,7 @@ checksum = "d902046e6a28a1e4c3cab97258a0ce11e994903f01c2d97a9447a0b3df85f4f6"
 name = "relay-client"
 version = "0.0.0"
 dependencies = [
+ "js-sys",
  "mail-core",
  "mail-mock",
  "ravenglass-relay",
@@ -4231,6 +4247,9 @@ dependencies = [
  "serde",
  "serde_json",
  "ureq",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -4932,7 +4951,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cd504cecbfe7eef649988840f9a6cb768d11085efec138f8e99f160632d867"
 dependencies = [
  "cc",
+ "js-sys",
  "rsqlite-vfs",
+ "wasm-bindgen",
 ]
 
 [[package]]

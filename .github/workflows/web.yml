@@ -1,0 +1,56 @@
+# The web build (architecture §8, §14): lint the app for wasm32, build the static folder with
+# tools/web-build.sh, record the wasm size against the §13 budget, and drive the page in headless
+# Chromium against a demo Relay (web/tests/e2e.mjs).
+name: Web
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with: { toolchain: "1.99.1", targets: "wasm32-unknown-unknown", components: clippy }
+      - uses: Swatinem/rust-cache@v2
+      - name: Tools (icons, wasm-opt, the Relay's font lookup)
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin binaryen libfontconfig1-dev
+      - name: Lint the app for the web
+        run: cargo clippy -p ravenglass --target wasm32-unknown-unknown -- -D warnings
+      - name: Cache the wasm-bindgen CLI
+        uses: actions/cache@v4
+        with:
+          path: tools/.cache
+          key: wasm-bindgen-${{ hashFiles('Cargo.lock') }}
+      - name: Build the web app
+        run: tools/web-build.sh --relay http://127.0.0.1:8743
+      - name: Size against the budget (12 MB of compressed wasm, architecture §13)
+        run: |
+          python3 - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import gzip, pathlib
+          b = pathlib.Path("web/dist/app_bg.wasm").read_bytes()
+          gz = len(gzip.compress(b, 9, mtime=0))
+          print(f"wasm: {len(b):,} bytes raw, {gz:,} bytes gzip (budget 12,000,000 compressed)")
+          raise SystemExit(0 if gz <= 12_000_000 else 1)
+          PY
+      - name: Build the Relay
+        run: cargo build -p ravenglass-relay
+      - name: Playwright and Chromium
+        run: |
+          npm install --no-save --prefix web/tests playwright@1
+          npx --prefix web/tests playwright install --with-deps chromium
+      - name: End to end in headless Chromium
+        run: node web/tests/e2e.mjs --dist web/dist --relay-bin target/debug/ravenglass-relay --out web/tests/out
+        env: { PLAYWRIGHT_MODULE: "${{ github.workspace }}/web/tests/node_modules/playwright/index.js" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-e2e-screenshots
+          path: web/tests/out/

@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- The web app's page (architecture §8). tools/web-build.sh fills in the {{…}} values. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' {{CONNECT}}; img-src 'self' blob: data:; style-src 'self' {{STYLES}}; font-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="{{THEME_COLOR}}">
+<meta name="referrer" content="no-referrer">
+<meta name="ravenglass-relay" content="{{RELAY}}">
+<title>Ravenglass</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="app.css">
+<link rel="modulepreload" href="app.js">
+<script type="module" src="boot.js"></script>
+</head>
+<body>
+<div id="rg-loading">Ravenglass is loading…</div>
+<div id="rg-status" role="status" aria-live="polite"></div>
+<noscript>Ravenglass needs JavaScript and WebAssembly.</noscript>
+</body>
+</html>

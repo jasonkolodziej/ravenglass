@@ -14,7 +14,7 @@ use crate::state::{AppState, Boot, Fx, Mail};
 use mail_auth::autoconfig;
 use mail_auth::{AccountConfig, AuthKind, MemorySecrets, SecretStore};
 use mail_core::AccountId;
-use ravenglass_accounts::{ClientIds, Connector, FormPost};
+use crate::platform::accounts::{ClientIds, Connector, FormPost};
 use ravenglass_config::Config;
 use ravenglass_engine::runner;
 use ravenglass_theme::Theme;
@@ -45,10 +45,10 @@ impl Services {
     /// The desktop services: the OS keyring (or memory with `RAVENGLASS_SECRETS=memory`, for
     /// tests and headless runs), HTTPS, and the OAuth client ids this run was started with.
     pub fn from_env(env: crate::platform::Env) -> Services {
-        let secrets: Arc<dyn SecretStore> = if env("RAVENGLASS_SECRETS").as_deref() == Some("memory") { Arc::new(MemorySecrets::default()) } else { Arc::new(mail_auth::secrets::KeyringSecrets::new()) };
+        let secrets: Arc<dyn SecretStore> = if env("RAVENGLASS_SECRETS").as_deref() == Some("memory") { Arc::new(MemorySecrets::default()) } else { crate::platform::secret_store() };
         let id = |key: &str| env(key).map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
         let client_ids = ClientIds { google: id(accounts_ui::client_id_env(mail_auth::oauth::Provider::Google)), microsoft: id(accounts_ui::client_id_env(mail_auth::oauth::Provider::Microsoft)) };
-        Services { secrets, client_ids, fetch: Arc::new(ravenglass_accounts::http::fetch_document), post: Some(ravenglass_accounts::http::form_post()) }
+        Services { secrets, client_ids, fetch: Arc::new(crate::platform::accounts::http::fetch_document), post: Some(crate::platform::accounts::http::form_post()) }
     }
 
     pub fn connector(&self) -> Connector {

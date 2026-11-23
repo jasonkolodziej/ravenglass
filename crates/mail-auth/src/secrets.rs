@@ -9,6 +9,7 @@ use std::sync::Mutex;
 pub enum SecretKind { Password, RefreshToken }
 
 impl SecretKind {
+    #[cfg(feature = "keyring")]
     fn label(self) -> &'static str { match self { SecretKind::Password => "password", SecretKind::RefreshToken => "refresh-token" } }
 }
 
