@@ -29,6 +29,10 @@ impl DemoBackend {
 
     /// The two demo accounts (`iCloud`, `Gmail`).
     pub fn accounts() -> Vec<DemoBackend> { MockBackend::demo().into_iter().map(DemoBackend::new).collect() }
+
+    /// The raw messages handed to `send`, oldest first.
+    #[cfg(test)]
+    pub fn sent(&self) -> Vec<Vec<u8>> { self.inner.sent.lock().map(|sent| sent.clone()).unwrap_or_default() }
 }
 
 /// Senders who write like people (their messages get a quoted block); the rest are services.

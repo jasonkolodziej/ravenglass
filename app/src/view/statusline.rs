@@ -31,7 +31,10 @@ pub fn line(s: &AppState, ui: &Ui, cols: usize) -> El {
             left = left.gap(1).put(":", p.muted).put(line, p.text).mark(Mark::Caret, p.accent);
         }
         Mode::Palette { .. } => left = left.gap(1).put("palette", p.muted),
-        Mode::Compose => left = left.gap(1).put("esc normal", p.muted),
+        Mode::Compose => {
+            let field = s.compose.current().map_or("draft", |c| c.field.label());
+            left = left.gap(1).put(field, p.text).gap(2).put("tab next field", p.muted);
+        }
         Mode::Normal { .. } | Mode::Visual { .. } => {
             let ws = s.ws();
             let path = match (&ws.search, &ws.source) {
@@ -45,7 +48,14 @@ pub fn line(s: &AppState, ui: &Ui, cols: usize) -> El {
                 _ => rows.iter().filter(|e| e.is_unread()).count(),
             };
             let flagged = rows.iter().filter(|e| e.flags.contains(Flags::FLAGGED)).count();
-            left = left.gap(1).put(&path, p.text).gap(2).put("by date", p.muted).gap(2);
+            // A link under the pointer, or the question before opening one, takes the path's place.
+            let path = match (&s.links.confirm, &s.links.hover) {
+                (Some(link), _) => format!("open {}? y/n", crate::links::host(&link.href)),
+                (None, Some(link)) => link.href.clone(),
+                (None, None) => path,
+            };
+            let linked = s.links.confirm.is_some() || s.links.hover.is_some();
+            left = left.gap(1).put(&grid::clip(&path, cols.saturating_sub(40).max(16)), if linked { p.link } else { p.text }).gap(2).put("by date", p.muted).gap(2);
             left = left.mark(Mark::Dot, p.unread).gap(1).put(&unread.to_string(), p.unread).gap(2);
             left = left.mark(Mark::Flag, p.flag).gap(1).put(&flagged.to_string(), p.flag);
             if matches!(s.mode, Mode::Visual { .. }) {
@@ -63,6 +73,8 @@ pub fn line(s: &AppState, ui: &Ui, cols: usize) -> El {
             right = format!("{}{at}/{total}", if pending.is_empty() { String::new() } else { format!("{}  ", pending.join(" ")) });
         }
     }
+    // A message waiting out its undo window counts down where the position was.
+    if let Some(sending) = s.sending_label() { right = sending; }
     // Chrome fill under everything after the mode block; the kind block closes the line.
     let block_end = grid::width(s.mode.label()) + 2;
     let right_at = cols.saturating_sub(kind_cols + grid::width(&right) + 2);

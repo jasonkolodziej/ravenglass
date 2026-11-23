@@ -100,6 +100,46 @@ fn workspace_gmail(s: &mut AppState) {
     s.perform(Action::Workspace(2));
 }
 
+/// Type `text` into the draft's focused field, as the keyboard would.
+fn type_into_draft(s: &mut AppState, text: &str) {
+    let Some(field) = s.compose.current().map(|c| c.field) else { return };
+    s.compose.edit_mut(field).insert(text);
+    s.compose_changed(field);
+}
+
+/// `c`: a new message, part written.
+fn compose(s: &mut AppState) {
+    s.perform(Action::Compose);
+    type_into_draft(s, "Huginn <huginn@asgard.example>, ");
+    s.compose_field(false);
+    s.compose_field(false);
+    type_into_draft(s, "Gnomon sync");
+    s.compose_field(false);
+    type_into_draft(s, "The build goes north on the morning ferry.\n\nSend word when the pass is clear.");
+    s.sync_compose_focus();
+}
+
+/// The preview's reply: the open message answered in a pane below the reader.
+fn compose_reply(s: &mut AppState) {
+    triage(s);
+    s.perform(Action::Reply);
+    type_into_draft(s, "Thanks — sending the build north today. Tell Huginn\nto watch the ferry dock.");
+}
+
+fn compose_reply_frost(s: &mut AppState) {
+    s.theme = Theme::frost();
+    compose_reply(s);
+}
+
+/// Run at `--size 800x700`: the draft takes the whole pane area.
+fn compose_narrow(s: &mut AppState) { compose_reply(s); }
+
+/// A reply waiting out its undo window.
+fn compose_sending(s: &mut AppState) {
+    compose_reply(s);
+    s.perform(Action::Send);
+}
+
 pub const SCENES: &[Scene] = &[
     ("default", triage),
     ("night", triage),
@@ -120,4 +160,9 @@ pub const SCENES: &[Scene] = &[
     ("html-newsletter", html_newsletter),
     ("html-receipt", html_receipt),
     ("html-frost", html_frost),
+    ("compose", compose),
+    ("compose-reply", compose_reply),
+    ("compose-reply-frost", compose_reply_frost),
+    ("compose-narrow", compose_narrow),
+    ("compose-sending", compose_sending),
 ];

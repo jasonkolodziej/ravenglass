@@ -8,13 +8,16 @@
 //!            cargo run -p ravenglass -- --list-scenes
 
 mod actions;
+mod compose;
 mod demo;
 mod fold;
 mod grid;
 mod keys;
 mod link;
+mod links;
 mod modes;
 mod panes;
+mod platform;
 mod scenes;
 mod state;
 mod timefmt;
@@ -56,6 +59,7 @@ pub fn flush(s: &mut AppState, tx: &mut Tx) {
             Fx::WakeAt(due) => tx.wake_at(due),
             Fx::ThemeChanged => tx.color_motion(rune::tok::motion::CALM),
             Fx::Quit => tx.quit(),
+            Fx::Blur => tx.blur(),
         }
     }
 }

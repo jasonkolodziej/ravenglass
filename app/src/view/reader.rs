@@ -114,7 +114,7 @@ pub fn pane(s: &AppState, ui: &Rc<Ui>, pane: u32, area: Rect) -> El {
                     lines.push(blank(ui, cols));
                 }
                 let ours = s.html.message.as_ref() == Some(&env.id);
-                extra_rows = html_surface(ui, ours.then_some(&s.html), text, ws.quotes_open, cols, &mut lines);
+                extra_rows = html_surface(ui, ours.then_some(&s.html), s.links.hover.is_some(), text, ws.quotes_open, cols, &mut lines);
             }
         },
     }
@@ -135,7 +135,7 @@ fn blank(ui: &Ui, cols: usize) -> El { el().size(ui.g.x(cols), ui.g.cell_h) }
 
 /// The HTML surface: one element as tall as the laid-out document, rounded up to whole rows,
 /// holding each painted tile at its place. Returns the rows it takes beyond the first.
-fn html_surface(ui: &Ui, pane: Option<&HtmlPane>, text: &TextBody, quotes_open: bool, cols: usize, out: &mut Vec<El>) -> usize {
+fn html_surface(ui: &Ui, pane: Option<&HtmlPane>, linked: bool, text: &TextBody, quotes_open: bool, cols: usize, out: &mut Vec<El>) -> usize {
     let g = &ui.g;
     let Some((pane, info)) = pane.filter(|p| !p.failed).and_then(|p| Some((p, p.info?))) else {
         // Not laid out (yet), or the renderer gave up: the text view is always there.
@@ -148,7 +148,17 @@ fn html_surface(ui: &Ui, pane: Option<&HtmlPane>, text: &TextBody, quotes_open: 
     let scale = pane.scale.max(1.0);
     let (width, height) = (info.width as f32 / scale, info.height as f32 / scale);
     let rows = ((height / g.cell_h).ceil() as usize).max(1);
-    let mut card = el().key("reader-html").size(g.x(cols), g.y(rows));
+    // The pointer's place goes to the engine in CSS pixels from the tiles' corner; it answers
+    // with the link there (`links.rs`).
+    let left = g.x(PAD);
+    let mut card = el().key("reader-html").size(g.x(cols), g.y(rows))
+        .on_pointer_move_local(move |s: &mut AppState, at: rune::PointerEvent, tx: &mut rune::Tx| {
+            s.html_pointer(at.x - left, at.y);
+            crate::flush(s, tx);
+        })
+        .on_hover_change(|s: &mut AppState, inside: bool, _tx: &mut rune::Tx| if !inside { s.html_pointer_left() })
+        .on_press(|s: &mut AppState| s.html_click());
+    if linked { card = card.cursor(rune::Cursor::Pointer); }
     for (index, pixels) in &pane.tiles {
         let top = (index * TILE_H) as f32 / scale;
         let tall = (TILE_H as f32 / scale).min(height - top);

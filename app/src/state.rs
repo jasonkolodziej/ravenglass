@@ -166,6 +166,8 @@ pub enum Fx {
     /// The theme changed: let colours ease.
     ThemeChanged,
     Quit,
+    /// Take the keyboard away from the focused text field.
+    Blur,
 }
 
 /// Engine start-up, after the first frame (plan §2 "Data flow").
@@ -241,6 +243,10 @@ pub struct AppState {
     /// The app clock of the last poll or key (seconds; virtual when headless).
     pub clock: f64,
     pub frame: Cell<Frame>,
+    /// Open drafts and what is on its way out (`compose.rs`).
+    pub compose: crate::compose::Compose,
+    /// The link under the pointer in the HTML reader (`links.rs`).
+    pub links: crate::links::Links,
 }
 
 /// Below this many columns of pane area the layout collapses to one pane.

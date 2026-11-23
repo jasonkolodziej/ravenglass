@@ -19,3 +19,4 @@ mail-render = { path = "../crates/mail-render" }
 ravenglass-engine = { path = "../crates/ravenglass-engine" }
 ravenglass-theme = { path = "../crates/ravenglass-theme" }
 ravenglass-brand = { path = "../crates/ravenglass-brand" }
+open = "5"                                             # links leave through the system browser (platform::open_url)

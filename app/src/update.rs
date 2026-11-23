@@ -8,7 +8,7 @@ use crate::modes::{self, Effect, Mode};
 use crate::panes::{Axis, Dir, Kind};
 use crate::state::*;
 use mail_core::{Envelope, Flags, FolderRole, MessageId};
-use ravenglass_engine::{Command, PAGE, ReaderView};
+use ravenglass_engine::{Command, PAGE, ReaderView, ReplyKind};
 
 /// How long a toast stays, in seconds.
 const TOAST_SECS: f64 = 6.0;
@@ -17,10 +17,17 @@ const ERROR_SECS: f64 = 9.0;
 impl AppState {
     /// One key press. True when it did something.
     pub fn key(&mut self, press: KeyPress) -> bool {
+        if self.link_confirm_key(press) { return true; }
+        self.mode_key(press) || self.compose_window_key(press)
+    }
+
+    /// The mode machine's part of a key press.
+    pub fn mode_key(&mut self, press: KeyPress) -> bool {
         let before = self.mode.clone();
         let effects = modes::step(&mut self.mode, press);
         let acted = !effects.is_empty() || self.mode != before;
         for effect in effects { self.run(effect); }
+        self.sync_compose_focus();
         acted
     }
 
@@ -36,6 +43,7 @@ impl AppState {
                 Ok(action) => self.perform(action),
                 Err(reason) => self.error(reason),
             },
+            Effect::ComposeField { back } => self.compose_field(back),
             Effect::RunPalette { query, selected } => {
                 if let Some(entry) = actions::palette_matches(&query).get(selected) { self.perform(entry.action.clone()); }
             }
@@ -65,11 +73,12 @@ impl AppState {
     /// Timers: true when something visible changed.
     pub fn tick(&mut self, clock: f64) -> bool {
         self.clock = clock;
+        let composing = self.compose_tick(clock);
         if self.toast.as_ref().is_some_and(|t| t.due <= clock) {
             self.toast = None;
             return true;
         }
-        false
+        composing
     }
 
     // ── actions ────────────────────────────────────────────────────────────────────────────
@@ -80,13 +89,14 @@ impl AppState {
             Action::MoveUp => self.step_selection(-1),
             Action::Top => self.jump_selection(false),
             Action::Bottom => self.jump_selection(true),
+            Action::Open if self.focused_kind() == Kind::Compose => self.compose_resume(),
             Action::Open => self.open_selected(true),
             Action::Back => self.back(),
             Action::Archive => self.move_to_role(FolderRole::Archive, "archived"),
             Action::Delete => self.move_to_role(FolderRole::Trash, "deleted"),
             Action::ToggleRead => self.toggle_flag(Flags::SEEN, "marked read", "marked unread"),
             Action::ToggleFlag => self.toggle_flag(Flags::FLAGGED, "flagged", "unflagged"),
-            Action::Undo => self.undo_last(),
+            Action::Undo => if !self.cancel_send() { self.undo_last() },
             Action::ToggleView => {
                 self.reader_view = match self.reader_view { ReaderView::Html => ReaderView::Text, ReaderView::Text => ReaderView::Html };
                 self.toast(match self.reader_view { ReaderView::Html => "reader view: html", ReaderView::Text => "reader view: text" });
@@ -118,9 +128,15 @@ impl AppState {
             Action::Mailbox(name) => self.go_to_mailbox(&name),
             Action::Refresh => for account in self.accounts() { self.dispatch(Command::Refresh(account)); },
             Action::Quit => self.fx.push(Fx::Quit),
-            Action::Compose => self.toast("compose arrives with the compose pane · esc back"),
-            Action::Reply | Action::ReplyAll | Action::Forward | Action::Send | Action::MoveTo | Action::GoToMailbox
-            | Action::ToggleThread | Action::PaneTree => {
+            Action::Compose => self.compose_or_resume(),
+            Action::NewDraft => self.compose_new(),
+            Action::Reply => self.compose_answer(ReplyKind::Reply),
+            Action::ReplyAll => self.compose_answer(ReplyKind::ReplyAll),
+            Action::Forward => self.compose_answer(ReplyKind::Forward),
+            Action::Send => self.send_draft(),
+            Action::Discard => self.discard_draft(),
+            Action::Retry => self.retry_send(),
+            Action::MoveTo | Action::GoToMailbox | Action::ToggleThread | Action::PaneTree => {
                 let title = actions::catalog().iter().find(|e| e.action == action).map_or("this", |e| e.title);
                 self.toast(format!("{}: not in this build yet", title.to_lowercase()));
             }
@@ -221,7 +237,7 @@ impl AppState {
     }
 
     /// The messages an action is about: the open one from the reader, else the selected rows.
-    fn targets(&self) -> Vec<Envelope> {
+    pub fn targets(&self) -> Vec<Envelope> {
         let ws = self.ws();
         if self.focused_kind() == Kind::Reader {
             return ws.open.iter().cloned().collect();
@@ -299,9 +315,13 @@ impl AppState {
 
     /// Tabs are the open things of a workspace: its list, and the message in the reader.
     fn cycle_tab(&mut self) {
+        // After the last message tab come the drafts; from a draft it is back to the list.
+        let from_reader = self.focused_kind() == Kind::Reader || self.ws().open.is_none();
+        if self.focused_kind() != Kind::Compose && from_reader && self.compose.current().is_some() {
+            return self.show_draft(self.compose.active, false);
+        }
         let ws = self.ws_mut();
-        if ws.open.is_none() { return; }
-        let next = if ws.panes.focused_kind() == Kind::Reader { Kind::List } else { Kind::Reader };
+        let next = if ws.panes.focused_kind() == Kind::List && ws.open.is_some() { Kind::Reader } else { Kind::List };
         ws.panes.focus_kind(next);
     }
 

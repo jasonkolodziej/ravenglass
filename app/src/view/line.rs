@@ -20,6 +20,8 @@ pub enum Mark {
     Sync,
     /// The text caret: a full block.
     Caret,
+    /// A pane title's grip: two columns of three dots.
+    Grip,
 }
 
 #[derive(Default)]
@@ -155,6 +157,14 @@ pub fn mark_el(g: &Grid, mark: Mark, color: Color) -> El {
             Shape::new().stroke_with(arc, false, 1.1, LineCap::Round, color).fill(vec![[tip[0] - 2.6, tip[1] - 2.2], [tip[0] + 1.6, tip[1] - 2.6], [tip[0] + 1.0, tip[1] + 2.0]], color)
         }
         Mark::Caret => Shape::new().fill(vec![[0.0, h * 0.12], [w, h * 0.12], [w, h * 0.9], [0.0, h * 0.9]], color),
+        Mark::Grip => {
+            let r = (w * 0.11).max(0.8);
+            let mut shape = Shape::new();
+            for x in [w * 0.3, w * 0.7] {
+                for y in [h * 0.32, h * 0.5, h * 0.68] { shape = shape.fill(circle(x, y, r), color); }
+            }
+            shape
+        }
     };
     canvas(shape).size(w, h).inert()
 }
