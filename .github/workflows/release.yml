@@ -343,6 +343,9 @@ jobs:
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/ravenglass-relay
       PUSH: ${{ needs.meta.outputs.release == 'true' }}
+      # The build action would also upload a build record artifact, which the publish job cannot
+      # download; it is not needed.
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
     steps:
       - uses: actions/checkout@v4
       - name: Image name (lower case)
@@ -414,8 +417,9 @@ jobs:
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v4
+      # Only this workflow's own uploads (app-*, relay-*); Docker's build record is not one.
       - uses: actions/download-artifact@v4
-        with: { path: artifacts }
+        with: { path: artifacts, pattern: "{app,relay}-*" }
       - name: Gather
         run: |
           mkdir -p release

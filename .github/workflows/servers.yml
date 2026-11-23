@@ -10,7 +10,9 @@ on:
 
 jobs:
   servers:
-    runs-on: ubuntu-latest
+    # Dovecot 2.3, the version tools/dovecot.sh configures: newer Ubuntu images ship 2.4, whose
+    # configuration format differs.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
