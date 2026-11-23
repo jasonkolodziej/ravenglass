@@ -160,7 +160,10 @@ impl AppState {
                 }
                 self.error(format!("{context}: {message}"));
             }
-            Event::OutboxState { .. } | Event::ImagesAllowed { .. } | Event::Addresses { .. } | Event::WakeAt(_) => {}
+            Event::OutboxState { .. } | Event::ImagesAllowed { .. } | Event::Addresses { .. } | Event::WakeAt(_) | Event::Watch { .. } => {}
+            // Compose and the HTML surface are not drawn yet; their events have nowhere to go.
+            Event::Draft(_) | Event::DraftSaved { .. } | Event::DraftClosed { .. } => {}
+            Event::HtmlLaidOut { .. } | Event::HtmlTile { .. } | Event::LinkHover { .. } | Event::HtmlFailed { .. } => {}
         }
     }
 
