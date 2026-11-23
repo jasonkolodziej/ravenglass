@@ -12,6 +12,8 @@ pub enum Kind {
     Reader,
     /// Nothing to show: draws the wallpaper.
     Empty,
+    /// The draft being written (`compose.rs`).
+    Compose,
 }
 
 /// How a split lays its two children out.

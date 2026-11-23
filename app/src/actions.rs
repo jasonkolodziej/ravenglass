@@ -47,6 +47,11 @@ pub enum Action {
     Mailbox(String),
     Refresh,
     Quit,
+    /// Start another draft even when one is open (`c` goes back to the open one).
+    NewDraft,
+    Discard,
+    /// Send a failed message again.
+    Retry,
 }
 
 impl Action {
@@ -119,6 +124,10 @@ pub fn catalog() -> &'static [Entry] {
             e(Action::Theme("frost".into()), "theme frost", "Theme: Frost"),
             e(Action::Refresh, "refresh", "Check for new mail"),
             e(Action::Quit, "quit", "Quit"),
+            e(Action::NewDraft, "new", "New message (another draft)"),
+            e(Action::Discard, "discard", "Discard draft"),
+            e(Action::Retry, "retry", "Retry sending"),
+            e(Action::PaneShow(Kind::Compose), "pane compose", "Pane: show draft"),
         ];
         const WORKSPACES: [(&str, &str); 9] = [
             ("workspace 1", "Workspace 1"), ("workspace 2", "Workspace 2"), ("workspace 3", "Workspace 3"),

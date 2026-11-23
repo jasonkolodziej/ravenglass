@@ -9,7 +9,7 @@ use rune::{Env, Key, KeyEvent, Mods, Runtime};
 
 const FRAME: f64 = 1.0 / 60.0;
 
-fn runtime_with(state: AppState, size: (f32, f32)) -> Runtime<AppState> {
+pub(super) fn runtime_with(state: AppState, size: (f32, f32)) -> Runtime<AppState> {
     let text = TextSystem::new(crate::FONTS, crate::FAMILIES);
     let mut rt = Runtime::with_text(state, view::root, size, Env { system_dark: true, scale: 2.0 }, text);
     rt.poll = Some(crate::poll);
@@ -19,32 +19,32 @@ fn runtime_with(state: AppState, size: (f32, f32)) -> Runtime<AppState> {
     rt
 }
 
-fn runtime() -> Runtime<AppState> { runtime_with(AppState::demo_inline(), (1400.0, 880.0)) }
+pub(super) fn runtime() -> Runtime<AppState> { runtime_with(AppState::demo_inline(), (1400.0, 880.0)) }
 
-fn scene(name: &str, size: (f32, f32)) -> Runtime<AppState> {
+pub(super) fn scene(name: &str, size: (f32, f32)) -> Runtime<AppState> {
     let mut state = AppState::demo_inline();
     let (_, setup) = crate::scenes::SCENES.iter().find(|(n, _)| *n == name).expect("a known scene");
     setup(&mut state);
     runtime_with(state, size)
 }
 
-fn settle(rt: &mut Runtime<AppState>) {
+pub(super) fn settle(rt: &mut Runtime<AppState>) {
     for _ in 0..90 { rt.frame(FRAME); }
 }
 
-fn press(rt: &mut Runtime<AppState>, key: Key) {
+pub(super) fn press(rt: &mut Runtime<AppState>, key: Key) {
     rt.key(KeyEvent { key, mods: Mods::default() });
     rt.frame(FRAME);
 }
 
-fn type_keys(rt: &mut Runtime<AppState>, text: &str) {
+pub(super) fn type_keys(rt: &mut Runtime<AppState>, text: &str) {
     for c in text.chars() { press(rt, Key::Text(c.to_string())); }
 }
 
-fn keyed<'a>(els: &'a [ElementInfo], key: &str) -> Option<&'a ElementInfo> { els.iter().find(|e| e.key.as_deref() == Some(key)) }
+pub(super) fn keyed<'a>(els: &'a [ElementInfo], key: &str) -> Option<&'a ElementInfo> { els.iter().find(|e| e.key.as_deref() == Some(key)) }
 
 /// The text drawn inside the element keyed `key`.
-fn text_in(els: &[ElementInfo], key: &str) -> String {
+pub(super) fn text_in(els: &[ElementInfo], key: &str) -> String {
     let Some(at) = els.iter().position(|e| e.key.as_deref() == Some(key)) else { return String::new() };
     let inside = |mut i: usize| loop {
         if i == at { return true; }

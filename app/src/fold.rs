@@ -14,7 +14,7 @@ use std::cell::Cell;
 use std::collections::VecDeque;
 
 /// The one HTML surface the reader has.
-const HTML_VIEW: ViewId = ViewId(1);
+pub(crate) const HTML_VIEW: ViewId = ViewId(1);
 /// Tiles asked for per message; taller mail shows this much and the text view has the rest.
 const MAX_TILES: u32 = 24;
 
@@ -53,6 +53,8 @@ impl AppState {
             wall,
             clock: 0.0,
             frame: Cell::new(frame),
+            compose: Default::default(),
+            links: Default::default(),
         }
     }
 
@@ -92,6 +94,7 @@ impl AppState {
 
     pub fn open_accounts(&mut self) {
         for account in self.accounts() { self.dispatch(Command::OpenAccount(account)); }
+        self.dispatch(Command::LoadDrafts);
     }
 
     /// Send a command; fold whatever comes back at once (the inline engine).
@@ -167,15 +170,19 @@ impl AppState {
                 match context.as_str() {
                     "move" | "set flags" => { self.pending.pop_front(); }
                     "undo" => self.undoing = None,
-                    _ => {}
+                    other => self.compose_error(other),
                 }
                 self.error(format!("{context}: {message}"));
             }
-            Event::OutboxState { .. } | Event::ImagesAllowed { .. } | Event::Addresses { .. } | Event::WakeAt(_) | Event::Watch { .. } | Event::AccountRemoved(_) => {}
+            Event::ImagesAllowed { .. } | Event::WakeAt(_) | Event::Watch { .. } | Event::AccountRemoved(_) => {}
             // Nothing was journaled, so no `Applied` will answer the pending action.
             Event::Unchanged => { self.pending.pop_front(); }
-            // Compose is not drawn yet; its events have nowhere to go.
-            Event::Draft(_) | Event::DraftSaved { .. } | Event::DraftClosed { .. } | Event::LinkHover { .. } => {}
+            Event::Draft(draft) => self.fold_draft(*draft),
+            Event::DraftSaved { id, on_server } => self.fold_draft_saved(&id, on_server),
+            Event::DraftClosed { id, outbox } => self.fold_draft_closed(&id, outbox),
+            Event::OutboxState { id, state } => self.fold_outbox(id, state),
+            Event::Addresses { prefix, addresses } => self.fold_addresses(&prefix, addresses),
+            Event::LinkHover { link, .. } => self.links.hover = link,
             Event::HtmlLaidOut { info, .. } => {
                 self.html.info = Some(info);
                 self.html.tiles.clear();

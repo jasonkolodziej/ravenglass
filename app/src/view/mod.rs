@@ -1,6 +1,7 @@
 //! Views: plain functions of `AppState`. Everything is placed in whole cells of the [`Grid`]
 //! and every colour comes from a theme role through [`Paint`].
 
+pub mod compose;
 pub mod line;
 pub mod list;
 pub mod palette;
@@ -51,6 +52,7 @@ pub struct Paint {
     pub link: Color,
     pub header_key: Color,
     pub error: Color,
+    pub ok: Color,
     pub wallpaper: Color,
 }
 
@@ -76,6 +78,7 @@ impl Paint {
             link: role("mail.link"),
             header_key: role("mail.header.key"),
             error: role("state.error"),
+            ok: role("state.ok"),
             wallpaper: role(theme.ui.wallpaper_role.as_deref().unwrap_or("wallpaper")),
         }
     }
@@ -146,6 +149,10 @@ pub fn root(s: &AppState, cx: &mut Cx<AppState>) -> El {
         root = root.child(rail::rail(&ui, chrome.panes.h).absolute(x, g.y(BAR_ROWS)));
     }
     root = root.child(workspaces::bar(s, &ui, chrome.cols).absolute(0.0, chrome.bar_y));
+    // The grid's block caret over the focused compose field, read back from the last frame.
+    if s.mode == Mode::Compose && let Some(rect) = cx.caret(compose::KEY) {
+        root = root.child(compose::caret(&ui, rect));
+    }
     if let Mode::Palette { query, selected } = &s.mode {
         root = root.child(palette::palette(&ui, query, *selected, chrome.cols, chrome.rows));
     }
@@ -182,8 +189,9 @@ fn pane_view(s: &AppState, ui: &Rc<Ui>, pane: &Placed, focused: bool, several: b
         Kind::List => list::pane(s, ui, pane.id, content),
         Kind::Reader => reader::pane(s, ui, pane.id, content),
         Kind::Empty => wallpaper::pane(ui, &format!("pane:{}", pane.id), content, "Empty pane", &wallpaper::hints()),
+        Kind::Compose => compose::pane(s, ui, pane.id, content),
     };
-    let role = match pane.kind { Kind::List => "list pane", Kind::Reader => "reader pane", Kind::Empty => "empty pane" };
+    let role = match pane.kind { Kind::List => "list pane", Kind::Reader => "reader pane", Kind::Empty => "empty pane", Kind::Compose => "compose pane" };
     let mut e = ui.place(el().key(format!("pane:{}", pane.id)).role("region").label(role), r).child(body);
     if status_rows > 0 {
         e = e.child(statusline::line(s, ui, r.w).absolute(0.0, g.y(r.h - 1)));

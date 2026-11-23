@@ -215,13 +215,31 @@ fn the_palette_chord_works_from_text_modes_and_closes_itself() {
 }
 
 #[test]
-fn compose_is_a_stub_that_escape_leaves() {
+fn compose_leaves_typing_to_the_field_and_keeps_esc_tab_and_send() {
     let mut mode = Mode::default();
     assert_eq!(feed(&mut mode, &[ch('c')]), [Effect::Act(Action::Compose)]);
     assert_eq!(mode.label(), "COMPOSE");
-    assert!(feed(&mut mode, &[ch('j')]).is_empty(), "list keys do nothing while composing");
+    assert!(feed(&mut mode, &[ch('j'), ch(':'), named(K::Enter), named(K::Backspace)]).is_empty(), "typing is the focused field's");
+    assert_eq!(feed(&mut mode, &[named(K::Tab)]), [Effect::ComposeField { back: false }]);
+    assert_eq!(feed(&mut mode, &[KeyPress { shift: true, ..named(K::Tab) }]), [Effect::ComposeField { back: true }]);
+    // The send chord acts without leaving; undo and the other editing chords stay the editor's.
+    assert_eq!(feed(&mut mode, &[primary('d', true)]), [Effect::Act(Action::Send)]);
+    assert!(feed(&mut mode, &[primary('z', false), primary('a', false), primary('r', false)]).is_empty());
+    assert_eq!(mode, Mode::Compose);
     feed(&mut mode, &[named(K::Esc)]);
     assert_eq!(mode, Mode::default());
+    // The palette and workspace chords leave the draft as it is.
+    mode = Mode::Compose;
+    feed(&mut mode, &[primary('p', true)]);
+    assert!(matches!(mode, Mode::Palette { .. }));
+    mode = Mode::Compose;
+    assert_eq!(feed(&mut mode, &[primary('2', false)]), [Effect::Act(Action::Workspace(2))]);
+    assert_eq!(mode, Mode::default());
+    // The reply keys and the commands that end a draft.
+    assert_eq!(typed(&mut mode, "rRf"), [Effect::Act(Action::Reply), Effect::Act(Action::ReplyAll), Effect::Act(Action::Forward)]);
+    assert_eq!(actions::parse_command(":send"), Ok(Action::Send));
+    assert_eq!(actions::parse_command(":discard"), Ok(Action::Discard));
+    assert_eq!(actions::parse_command(":retry"), Ok(Action::Retry));
 }
 
 // ── actions ────────────────────────────────────────────────────────────────────────────────

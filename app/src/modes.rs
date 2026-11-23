@@ -18,7 +18,8 @@ pub enum Mode {
     Command { line: String },
     /// The fuzzy palette over every action.
     Palette { query: String, selected: usize },
-    /// A stub until the compose pane lands (M7): only `esc` leaves it.
+    /// Typing goes to the draft's focused field (`compose.rs` holds the draft and which field);
+    /// the machine keeps `esc`, `tab` and a few chords.
     Compose,
 }
 
@@ -76,6 +77,8 @@ pub enum Effect {
     RunCommand(String),
     /// Enter in the palette: run the `selected` match of `query`.
     RunPalette { query: String, selected: usize },
+    /// `tab` / `shift+tab` in COMPOSE: the next or the previous field.
+    ComposeField { back: bool },
 }
 
 /// Feed one key press. The key table decides what NORMAL and VISUAL keys mean; text-entry modes
@@ -196,8 +199,15 @@ pub fn step(mode: &mut Mode, key: KeyPress) -> Effects<Effect> {
             }
         }
         Mode::Compose => match key.key {
+            // The draft stays open; `c` or `enter` on its pane goes back to it.
             K::Esc => leave(mode),
-            _ => chord(mode, key),
+            K::Tab if !(key.ctrl || key.cmd || key.alt) => Effects::one(Effect::ComposeField { back: key.shift }),
+            _ => match keys::lookup_chord(&key) {
+                Some(Action::Send) => Effects::one(Effect::Act(Action::Send)),
+                // Chords that leave the draft. The rest (undo, select all, …) are the editor's.
+                Some(Action::Palette | Action::NextTab | Action::PrevTab | Action::Workspace(_)) => chord(mode, key),
+                _ => Effects::none(),
+            },
         },
     }
 }
