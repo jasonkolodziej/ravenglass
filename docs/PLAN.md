@@ -408,3 +408,11 @@ Resolved 2026-11-23:
 2. **HTML in dark mode:** both modes ship (original colours on a light card, and darkened), as a setting. The light card stays the default.
 3. **Default reader view:** HTML.
 4. **Biometric app lock (Touch ID / Windows Hello):** v1. This overrides "Explicitly later" in §1.
+
+Resolved 2026-11-23 (second round):
+5. **App lock without a password account:** handled now. A local passcode (stored only as a salted, slow hash in the OS keyring) unlocks the app when there is no OS prompt and no password account.
+6. **While locked:** mail keeps syncing, and only key presses count as activity. Both kept as built.
+7. **HTML in dark mode:** the paper card stays the default; darken is a setting. Confirmed.
+8. **Relay hosting:** both. Self-hosters can run it for one person with a shared token; an official, multi-user instance gets per-user sign-in, per-user encrypted secrets and per-user isolation.
+9. **Next:** all of it in parallel: the web build, packaging, and verification against real mail server software.
+

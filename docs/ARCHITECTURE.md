@@ -644,12 +644,12 @@ Decided by Jason on 2026-11-23:
 
 - [x] Providers: any modern provider, custom hosts included. Generic IMAP/SMTP with autoconfig comes first because it reaches all of them; JMAP and OAuth (Gmail, Microsoft 365) follow in the same milestone.
 - [x] Default reader view: HTML. Text stays one key away (`t`) and is the fallback.
-- [x] HTML in dark themes: both modes ship, paper card and darkened, switched with `html_dark`. Paper stays the default until Jason says otherwise.
-- [x] Biometric or passkey lock: v1.
+- [x] HTML in dark themes: both modes ship, paper card and darkened, switched with `html_dark`. Paper is the default (confirmed).
+- [x] Biometric or passkey lock: v1. Where there is no OS prompt and no password account, a local passcode unlocks it.
 
 Still open:
 
-- [ ] Who hosts the web app and Relay at launch: self-host only, or an official instance?
+- [x] Who hosts the web app and Relay: both. A shared-token mode for self-hosting one person, and per-user sign-in for an official multi-user instance.
 
 ## 17. Appendices
 
