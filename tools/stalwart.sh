@@ -49,7 +49,8 @@ fetch() {
     command -v zstd >/dev/null || { echo "zstd is needed to unpack the image layer (apt-get install zstd)" >&2; exit 1; }
     local work token
     work="$(mktemp -d)"
-    trap 'rm -rf "$work"' RETURN
+    # Cleaned up explicitly: a RETURN trap would outlive this function and fire, with `work`
+    # unset, on every later return under `set -u`.
     echo "fetching Stalwart $VERSION from ghcr.io" >&2
     token="$(curl --fail --silent --show-error "https://ghcr.io/token?scope=repository:$IMAGE:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
     curl --fail --silent --show-error --location -H "Authorization: Bearer $token" \
@@ -60,6 +61,7 @@ fetch() {
     echo "$BINARY_SHA256_1_0_3  $work/root/usr/local/bin/stalwart" | sha256sum --check --quiet || { echo "binary checksum mismatch" >&2; exit 1; }
     mv "$work/root/usr/local/bin/stalwart" "$BIN"
     chmod 755 "$BIN"
+    rm -rf "$work"
 }
 
 current_dir() { [ -f "$POINTER" ] && cat "$POINTER"; }
