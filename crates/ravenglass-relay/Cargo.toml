@@ -6,11 +6,28 @@ license.workspace = true
 publish.workspace = true
 description = "Ravenglass Relay: bridges the web client to IMAP/SMTP/JMAP. Request handling only; no server yet."
 
+[features]
+default = ["server"]
+# The HTTP and WebSocket server around the request handler.
+server = ["dep:axum", "dep:tokio"]
+
+[[bin]]
+name = "ravenglass-relay"
+path = "src/main.rs"
+required-features = ["server"]
+
 [dependencies]
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 mail-core = { path = "../mail-core" }
 relay-proto = { path = "../relay-proto" }
 serde.workspace = true
 serde_json.workspace = true
 
-[dev-dependencies]
 mail-mock = { path = "../mail-mock" }
+
+[dev-dependencies]
+relay-client = { path = "../relay-client", features = ["http"] }
+ravenglass-engine = { path = "../ravenglass-engine" }
+mail-store = { path = "../mail-store" }
+ureq.workspace = true

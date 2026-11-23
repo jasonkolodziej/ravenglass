@@ -5,9 +5,15 @@
 //! [`MailBackend`] and returns the response. It is transport-free, so the client and the Relay
 //! are tested against each other without sockets.
 //!
-//! Not here yet (milestone W2): the axum server, sign-in and sessions, the WebSocket push
-//! fan-out, encrypted token storage, the image proxy and server search. Until sign-in exists
-//! every caller can reach every registered account, so do not expose this to a network.
+//! [`server`] wraps it in HTTP: a shared bearer token, CORS for one origin, and a WebSocket that
+//! pushes folder changes.
+//!
+//! Not here yet (milestone W2): passkey or OIDC sign-in with per-user sessions (one token
+//! guards every account for now), encrypted token storage, the image proxy, Web Push and
+//! server search.
+
+#[cfg(feature = "server")]
+pub mod server;
 
 use mail_core::*;
 use relay_proto::*;
@@ -21,6 +27,8 @@ pub struct Relay { accounts: BTreeMap<AccountId, Arc<dyn MailBackend>> }
 
 impl Relay {
     pub fn new() -> Self { Self::default() }
+
+    pub fn backends(&self) -> impl Iterator<Item = &Arc<dyn MailBackend>> { self.accounts.values() }
 
     pub fn add_backend(&mut self, backend: Arc<dyn MailBackend>) { self.accounts.insert(backend.account().clone(), backend); }
 

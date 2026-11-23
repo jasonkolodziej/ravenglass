@@ -78,5 +78,37 @@ impl<T: Transport> MailBackend for RelayBackend<T> {
     fn idle<'a>(&'a self, _folder: &'a FolderId, _events: Sender<IdleEvent>) -> BoxFut<'a, Result<()>> { Box::pin(async { Ok(()) }) }
 }
 
+/// A blocking HTTP transport for native builds: the desktop app pointed at a Relay, and tests.
+/// Each request blocks the calling thread, which is the engine thread, not the UI.
+#[cfg(feature = "http")]
+pub struct HttpTransport { base: String, token: String, agent: ureq::Agent }
+
+#[cfg(feature = "http")]
+impl HttpTransport {
+    /// `base` is the Relay's origin, e.g. `https://relay.example.org`.
+    pub fn new(base: &str, token: &str) -> Self {
+        let config = ureq::Agent::config_builder().http_status_as_error(false).timeout_global(Some(std::time::Duration::from_secs(60))).build();
+        Self { base: base.trim_end_matches('/').to_owned(), token: token.to_owned(), agent: ureq::Agent::new_with_config(config) }
+    }
+}
+
+#[cfg(feature = "http")]
+impl Transport for HttpTransport {
+    fn request<'a>(&'a self, version: u32, method: Method, path: &'a str, body: Vec<u8>) -> BoxFut<'a, Result<HttpResponse>> {
+        Box::pin(async move {
+            let url = format!("{}{path}", self.base);
+            let (auth, version) = (format!("Bearer {}", self.token), version.to_string());
+            let sent = match method {
+                Method::Get => self.agent.get(&url).header("authorization", &auth).header(VERSION_HEADER, &version).call(),
+                Method::Post => self.agent.post(&url).header("authorization", &auth).header(VERSION_HEADER, &version).header("content-type", "application/json").send(&body[..]),
+            };
+            let mut response = sent.map_err(|e| MailError::Network(e.to_string()))?;
+            let status = response.status().as_u16();
+            let body = response.body_mut().with_config().limit(64 << 20).read_to_vec().map_err(|e| MailError::Network(e.to_string()))?;
+            Ok(HttpResponse { status, body })
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests;

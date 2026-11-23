@@ -6,7 +6,12 @@ license.workspace = true
 publish.workspace = true
 description = "MailBackend over the Relay API, for the web build."
 
+[features]
+# A blocking HTTP transport for native builds (desktop through a Relay, and tests).
+http = ["dep:ureq"]
+
 [dependencies]
+ureq = { workspace = true, optional = true }
 mail-core = { path = "../mail-core" }
 relay-proto = { path = "../relay-proto" }
 serde.workspace = true

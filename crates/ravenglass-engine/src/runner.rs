@@ -3,14 +3,13 @@
 //! a Worker with `postMessage` instead.
 
 use crate::{Command, Engine, Event};
+pub use mail_core::block_on;
 use mail_core::{AccountId, FolderId, MailBackend};
 use std::collections::BTreeSet;
 use std::sync::Mutex;
-use std::future::Future;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
-use std::task::{Context, Poll, Wake, Waker};
-use std::thread::{self, JoinHandle, Thread};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// What the engine thread receives. Push watchers hold a sender too, so the thread cannot rely
@@ -96,19 +95,3 @@ fn watch(backend: Arc<dyn MailBackend>, account: AccountId, folder: FolderId, co
 
 /// Seconds since the Unix epoch.
 pub fn now() -> f64 { SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64()) }
-
-struct Unpark(Thread);
-
-impl Wake for Unpark {
-    fn wake(self: Arc<Self>) { self.0.unpark(); }
-}
-
-/// Run a future on this thread, parking while it waits.
-pub fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = Waker::from(Arc::new(Unpark(thread::current())));
-    let mut cx = Context::from_waker(&waker);
-    let mut future = std::pin::pin!(future);
-    loop {
-        match future.as_mut().poll(&mut cx) { Poll::Ready(value) => return value, Poll::Pending => thread::park() }
-    }
-}
