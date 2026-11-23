@@ -4,10 +4,14 @@
 //! The HTTPS layer is a [`JmapHttp`] the caller supplies (it also adds the credentials); the
 //! `http` feature has a blocking one for native builds.
 //!
-//! **Status:** written against the RFCs and tested against the in-process server in
-//! `tests.rs`, which implements the same reading of them. It has not yet talked to a real
-//! JMAP server (Fastmail, Stalwart). Not here yet: push (EventSource), so `idle` returns at
-//! once and the engine's five-minute poll finds new mail; attachment lists on envelopes.
+//! **Status:** tested against the in-process server in `tests.rs` and against a real one,
+//! Stalwart (`tests/stalwart.rs`, `RAVENGLASS_STALWART_TEST=1`, see `tools/stalwart.sh`). Not
+//! yet against Fastmail. Not here yet: push (EventSource), so `idle` returns at once and the
+//! engine's five-minute poll finds new mail; attachment lists on envelopes.
+//!
+//! Folder, message and thread ids are `{account}/{JMAP id}`. A folder's sync token holds the
+//! account's `Email` state and the folder query's state: `Email/queryChanges` says what entered
+//! and left the folder, `Email/changes` what changed at all.
 
 mod session;
 #[cfg(test)]
@@ -34,7 +38,9 @@ pub trait JmapHttp: Send + Sync {
 const USING: [&str; 3] = ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"];
 /// Ids asked for per `Email/query` and `Email/get`.
 const PAGE: usize = 256;
-const ENVELOPE_PROPERTIES: [&str; 10] = ["id", "threadId", "mailboxIds", "keywords", "from", "to", "cc", "subject", "receivedAt", "preview"];
+const ENVELOPE_PROPERTIES: [&str; 11] = ["id", "threadId", "mailboxIds", "keywords", "from", "to", "cc", "subject", "sentAt", "receivedAt", "preview"];
+/// Characters of preview kept for the list row, as the IMAP backend keeps.
+const PREVIEW_CHARS: usize = 200;
 
 pub struct JmapBackend<H> {
     account: AccountId,
@@ -93,48 +99,117 @@ impl<H: JmapHttp> JmapBackend<H> {
         Ok((list, state))
     }
 
-    /// Every message in a mailbox, newest first, and the state they were read at.
+    /// The query behind a folder's list: its messages, newest first.
+    fn folder_query(session: &Session, mailbox: &str) -> Value {
+        json!({ "accountId": session.account_id, "filter": { "inMailbox": mailbox }, "sort": [{ "property": "receivedAt", "isAscending": false }] })
+    }
+
+    /// Every message in a mailbox, newest first, and the states they were read at.
     async fn full_sync(&self, session: &Session, folder: &FolderId) -> Result<FolderDelta> {
+        let mailbox = unscope(&self.account, &folder.0)?;
         let mut ids: Vec<String> = Vec::new();
-        let mut state = String::new();
+        let (mut state, mut query_state) = (String::new(), String::new());
         loop {
-            let query = json!({ "accountId": session.account_id, "filter": { "inMailbox": folder.0 }, "sort": [{ "property": "receivedAt", "isAscending": false }], "position": ids.len(), "limit": PAGE });
+            let mut query = Self::folder_query(session, mailbox);
+            query["position"] = json!(ids.len());
+            query["limit"] = json!(PAGE);
             let mut got = self.call(session, vec![("Email/query", query), ("Email/get", json!({ "accountId": session.account_id, "ids": [], "properties": ["id"] }))]).await?;
             // An empty Email/get in the same request reads the state the query ran at.
             if state.is_empty() { state = got[1]["state"].as_str().unwrap_or_default().to_owned(); }
-            let page: Vec<String> = got.remove(0)["ids"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+            let page_state = got[0]["queryState"].as_str().unwrap_or_default().to_owned();
+            if ids.is_empty() {
+                query_state = page_state;
+            } else if page_state != query_state {
+                // The mailbox changed between pages, so positions moved: read it again from the top.
+                (ids, state, query_state) = (Vec::new(), String::new(), String::new());
+                continue;
+            }
+            let page: Vec<String> = strings(&got.remove(0)["ids"]);
             let last = page.len() < PAGE;
             ids.extend(page);
             if last { break; }
         }
         let (list, _) = self.envelopes(session, &ids).await?;
-        Ok(FolderDelta { added: list.iter().filter_map(|e| envelope(e, folder)).collect(), token: SyncToken(state), ..Default::default() })
+        Ok(FolderDelta { added: list.iter().filter_map(|e| envelope(e, &self.account, folder)).collect(), token: Token { state, query_state }.encode(), ..Default::default() })
     }
 
-    async fn changes(&self, session: &Session, folder: &FolderId, since: &str) -> Result<FolderDelta> {
-        let (mut touched, mut destroyed, mut state) = (Vec::new(), Vec::new(), since.to_owned());
+    /// What changed in a folder since `since`. `Email/queryChanges` says which messages entered
+    /// and left it (new, moved, destroyed); `Email/changes` which messages changed at all (flags).
+    async fn changes(&self, session: &Session, folder: &FolderId, since: &Token) -> Result<FolderDelta> {
+        let mut query_changes = Self::folder_query(session, unscope(&self.account, &folder.0)?);
+        query_changes["sinceQueryState"] = json!(since.query_state);
+        let moved = self.call(session, vec![("Email/queryChanges", query_changes)]).await?.remove(0);
+        let mut touched: Vec<String> = moved["added"].as_array().map(|a| a.iter().filter_map(|v| v["id"].as_str().map(str::to_owned)).collect()).unwrap_or_default();
+        let left = strings(&moved["removed"]);
+        let query_state = moved["newQueryState"].as_str().unwrap_or(&since.query_state).to_owned();
+
+        let mut state = since.state.clone();
         loop {
-            let mut got = self.call(session, vec![("Email/changes", json!({ "accountId": session.account_id, "sinceState": state, "maxChanges": PAGE }))]).await?;
-            let result = got.remove(0);
-            let strings = |key: &str| result[key].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect::<Vec<_>>()).unwrap_or_default();
-            touched.extend(strings("created"));
-            touched.extend(strings("updated"));
-            destroyed.extend(strings("destroyed"));
+            let result = self.call(session, vec![("Email/changes", json!({ "accountId": session.account_id, "sinceState": state, "maxChanges": PAGE }))]).await?.remove(0);
+            touched.extend(strings(&result["created"]));
+            touched.extend(strings(&result["updated"]));
             state = result["newState"].as_str().unwrap_or(&state).to_owned();
             if result["hasMoreChanges"] != true { break; }
         }
+        touched.extend(left.iter().cloned());
+        touched.sort_unstable();
+        touched.dedup();
         let (list, _) = self.envelopes(session, &touched).await?;
-        let mut delta = FolderDelta { token: SyncToken(state), ..Default::default() };
-        for email in &list {
-            match envelope(email, folder) {
-                // Created here, moved here or re-flagged: the store upserts all three the same way.
-                Some(e) => delta.added.push(e),
-                // Changed and no longer in this mailbox: it left.
-                None => delta.removed.extend(email["id"].as_str().map(MessageId::from)),
-            }
-        }
-        delta.removed.extend(destroyed.iter().map(|id| MessageId::from(id.as_str())));
-        Ok(delta)
+        // Created here, moved here or re-flagged: the store upserts all three the same way.
+        // Changes to messages in other folders are theirs to report, not removals from this one.
+        let added: Vec<Envelope> = list.iter().filter_map(|e| envelope(e, &self.account, folder)).collect();
+        // Only a message that no longer exists is removed. One that moved keeps its id, and the
+        // store holds one row per id: the destination's sync moves that row, whichever folder
+        // syncs first, where a removal here could delete the row the destination already moved.
+        let exists = |id: &String| list.iter().any(|e| e["id"].as_str() == Some(id.as_str()));
+        let removed = left.into_iter().filter(|id| !exists(id)).map(|id| MessageId(scope(&self.account, &id))).collect();
+        Ok(FolderDelta { added, removed, token: Token { state, query_state }.encode(), ..Default::default() })
+    }
+
+    /// The session resource's capabilities (fetching it if needed).
+    pub async fn capabilities(&self) -> Result<Vec<String>> { Ok(self.session().await?.capabilities) }
+
+    /// The newest `limit` messages of `folder`, newest first, and how many it holds. Changes nothing.
+    pub async fn newest(&self, folder: &FolderId, limit: u32) -> Result<(Vec<Envelope>, u32)> {
+        let session = self.session().await?;
+        let mut query = Self::folder_query(&session, unscope(&self.account, &folder.0)?);
+        query["limit"] = json!(limit);
+        query["calculateTotal"] = json!(true);
+        let found = self.call(&session, vec![("Email/query", query)]).await?.remove(0);
+        let ids = strings(&found["ids"]);
+        let (list, _) = self.envelopes(&session, &ids).await?;
+        let total = found["total"].as_u64().unwrap_or(ids.len() as u64) as u32;
+        // Email/get answers in any order; keep the query's.
+        let mut newest: Vec<Envelope> = list.iter().filter_map(|e| envelope(e, &self.account, folder)).collect();
+        newest.sort_by_key(|e| ids.iter().position(|id| scope(&self.account, id) == e.id.0));
+        Ok((newest, total))
+    }
+
+    /// Create a top-level mailbox.
+    pub async fn create_folder(&self, name: &str) -> Result<FolderId> {
+        let session = self.session().await?;
+        let args = json!({ "accountId": session.account_id, "create": { "new": { "name": name, "parentId": null } } });
+        let result = self.call(&session, vec![("Mailbox/set", args)]).await?.remove(0);
+        let id = result["created"]["new"]["id"].as_str().ok_or_else(|| set_error("create mailbox", &result["notCreated"]["new"]))?;
+        Ok(FolderId(scope(&self.account, id)))
+    }
+
+    /// Delete a mailbox and the messages that are only in it.
+    pub async fn delete_folder(&self, folder: &FolderId) -> Result<()> {
+        let session = self.session().await?;
+        let mailbox = unscope(&self.account, &folder.0)?;
+        let args = json!({ "accountId": session.account_id, "destroy": [mailbox], "onDestroyRemoveEmails": true });
+        let result = self.call(&session, vec![("Mailbox/set", args)]).await?.remove(0);
+        if result["notDestroyed"][mailbox].is_object() { Err(set_error("delete mailbox", &result["notDestroyed"][mailbox])) } else { Ok(()) }
+    }
+
+    /// Store a message in a folder with these flags.
+    pub async fn append_to(&self, folder: &FolderId, raw: &[u8], flags: Flags) -> Result<MessageId> {
+        let session = self.session().await?;
+        let mailbox = unscope(&self.account, &folder.0)?;
+        let keywords: serde_json::Map<String, Value> = KEYWORDS.iter().filter(|(flag, _)| flags.contains(*flag)).map(|(_, k)| ((*k).to_owned(), json!(true))).collect();
+        let blob = self.upload(&session, raw).await?;
+        Ok(MessageId(scope(&self.account, &self.import(&session, &blob, mailbox, Value::Object(keywords)).await?)))
     }
 
     async fn upload(&self, session: &Session, raw: &[u8]) -> Result<String> {
@@ -151,7 +226,7 @@ impl<H: JmapHttp> JmapBackend<H> {
     }
 
     async fn update(&self, session: &Session, ids: &[MessageId], patch: Value) -> Result<()> {
-        let update: serde_json::Map<String, Value> = ids.iter().map(|id| (id.0.clone(), patch.clone())).collect();
+        let update = ids.iter().map(|id| Ok((unscope(&self.account, &id.0)?.to_owned(), patch.clone()))).collect::<Result<serde_json::Map<String, Value>>>()?;
         let mut got = self.call(session, vec![("Email/set", json!({ "accountId": session.account_id, "update": update }))]).await?;
         match got.remove(0)["notUpdated"].as_object().and_then(|failed| failed.values().next()) {
             Some(first) => Err(set_error("update", first)),
@@ -167,17 +242,20 @@ impl<H: JmapHttp> MailBackend for JmapBackend<H> {
         Box::pin(async move {
             let session = self.session().await?;
             let boxes = self.mailboxes(&session).await?;
-            Ok(boxes.iter().filter_map(|m| folder(m, &boxes, &self.account)).collect())
+            let mut folders: Vec<Folder> = boxes.iter().filter_map(|m| folder(m, &boxes, &self.account)).collect();
+            roles_from_names(&mut folders);
+            Ok(folders)
         })
     }
 
     fn sync_folder<'a>(&'a self, folder: &'a FolderId, since: &'a SyncToken) -> BoxFut<'a, Result<FolderDelta>> {
         Box::pin(async move {
             let session = self.session().await?;
-            if since.0.is_empty() { return self.full_sync(&session, folder).await; }
-            match self.changes(&session, folder, &since.0).await {
-                // The server no longer remembers that state: start over.
-                Err(MailError::Server(m)) if m.contains("cannotCalculateChanges") => self.full_sync(&session, folder).await,
+            // No token, or one from before folder queries were tracked: read the folder whole.
+            let Some(since) = Token::decode(since) else { return self.full_sync(&session, folder).await };
+            match self.changes(&session, folder, &since).await {
+                // The server no longer remembers that state, or too much changed: start over.
+                Err(MailError::Server(m)) if m.contains("cannotCalculateChanges") || m.contains("tooManyChanges") => self.full_sync(&session, folder).await,
                 other => other,
             }
         })
@@ -186,7 +264,8 @@ impl<H: JmapHttp> MailBackend for JmapBackend<H> {
     fn fetch_body<'a>(&'a self, msg: &'a MessageId) -> BoxFut<'a, Result<RawMessage>> {
         Box::pin(async move {
             let session = self.session().await?;
-            let mut got = self.call(&session, vec![("Email/get", json!({ "accountId": session.account_id, "ids": [msg.0], "properties": ["blobId"] }))]).await?;
+            let email = unscope(&self.account, &msg.0)?;
+            let mut got = self.call(&session, vec![("Email/get", json!({ "accountId": session.account_id, "ids": [email], "properties": ["blobId"] }))]).await?;
             let blob = got.remove(0)["list"][0]["blobId"].as_str().map(str::to_owned).ok_or_else(|| MailError::NotFound(msg.to_string()))?;
             Ok(RawMessage { id: msg.clone(), bytes: self.http.get(&session.download_url(&blob)).await? })
         })
@@ -209,7 +288,8 @@ impl<H: JmapHttp> MailBackend for JmapBackend<H> {
         Box::pin(async move {
             if msgs.is_empty() { return Ok(()); }
             let session = self.session().await?;
-            self.update(&session, msgs, json!({ "mailboxIds": { to.0.clone(): true } })).await
+            let mailbox = unscope(&self.account, &to.0)?;
+            self.update(&session, msgs, json!({ "mailboxIds": { mailbox: true } })).await
         })
     }
 
@@ -218,7 +298,7 @@ impl<H: JmapHttp> MailBackend for JmapBackend<H> {
             let session = self.session().await?;
             let drafts = self.mailbox_with_role(&session, "drafts").await?;
             let blob = self.upload(&session, raw).await?;
-            Ok(MessageId(self.import(&session, &blob, &drafts, json!({ "$draft": true, "$seen": true })).await?))
+            Ok(MessageId(scope(&self.account, &self.import(&session, &blob, &drafts, json!({ "$draft": true, "$seen": true })).await?)))
         })
     }
 
@@ -234,14 +314,49 @@ impl<H: JmapHttp> MailBackend for JmapBackend<H> {
             let identity = identity.and_then(|i| i["id"].as_str()).ok_or_else(|| MailError::Server("the account has no sending identity".into()))?;
             let envelope = json!({ "mailFrom": { "email": from.email }, "rcptTo": rcpt.iter().map(|a| json!({ "email": a.email })).collect::<Vec<_>>() });
             let args = json!({ "accountId": session.account_id, "create": { "send": { "emailId": email, "identityId": identity, "envelope": envelope } } });
-            let mut got = self.call(&session, vec![("EmailSubmission/set", args)]).await?;
-            let result = got.remove(0);
-            if result["created"]["send"].is_object() { Ok(()) } else { Err(set_error("submission", &result["notCreated"]["send"])) }
+            let submitted = match self.call(&session, vec![("EmailSubmission/set", args)]).await {
+                Ok(mut got) => { let result = got.remove(0); if result["created"]["send"].is_object() { Ok(()) } else { Err(set_error("submission", &result["notCreated"]["send"])) } }
+                Err(error) => Err(error),
+            };
+            if submitted.is_err() {
+                // Not sent, so not in Sent either: the outbox will try again and file a new copy.
+                let _ = self.call(&session, vec![("Email/set", json!({ "accountId": session.account_id, "destroy": [email] }))]).await;
+            }
+            submitted
         })
     }
 
     fn idle<'a>(&'a self, _folder: &'a FolderId, _events: Sender<IdleEvent>) -> BoxFut<'a, Result<()>> { Box::pin(async { Ok(()) }) }
 }
+
+/// A folder's sync token: the account's `Email` state and the folder query's state, so that
+/// changes elsewhere in the account are never mistaken for messages leaving this folder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Token { state: String, query_state: String }
+
+impl Token {
+    const PREFIX: &'static str = "q1 ";
+
+    fn encode(&self) -> SyncToken { SyncToken(format!("{}{} {}", Self::PREFIX, self.state, self.query_state)) }
+
+    /// `None` for an empty token or one this version did not write: both mean a full sync.
+    fn decode(token: &SyncToken) -> Option<Self> {
+        let (state, query_state) = token.0.strip_prefix(Self::PREFIX)?.split_once(' ')?;
+        (!state.is_empty() && !query_state.is_empty()).then(|| Self { state: state.to_owned(), query_state: query_state.to_owned() })
+    }
+}
+
+/// Ids as the engine sees them: `{account}/{JMAP id}`, like the IMAP backend's. A JMAP id is
+/// only unique within its account (Stalwart names every account's mailboxes from "a"), and the
+/// store's ids are global, so two JMAP accounts would otherwise share folders and messages.
+fn scope(account: &AccountId, id: &str) -> String { format!("{}/{id}", account.0) }
+
+/// The JMAP id inside an id from [`scope`]; `NotFound` for another account's id.
+fn unscope<'a>(account: &AccountId, id: &'a str) -> Result<&'a str> {
+    id.strip_prefix(account.0.as_str()).and_then(|rest| rest.strip_prefix('/')).filter(|rest| !rest.is_empty()).ok_or_else(|| MailError::NotFound("message or folder".into()))
+}
+
+fn strings(list: &Value) -> Vec<String> { list.as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default() }
 
 const KEYWORDS: [(Flags, &str); 4] = [(Flags::SEEN, "$seen"), (Flags::FLAGGED, "$flagged"), (Flags::ANSWERED, "$answered"), (Flags::DRAFT, "$draft")];
 
@@ -265,6 +380,24 @@ fn role(name: Option<&str>) -> FolderRole {
     }
 }
 
+/// A top-level mailbox named like a role gets it when no mailbox has that role from the server,
+/// as on IMAP: a folder a user made called "Archive" is where archiving goes (Stalwart and
+/// Cyrus give a user-made mailbox no role).
+fn roles_from_names(folders: &mut [Folder]) {
+    for i in 0..folders.len() {
+        if folders[i].role != FolderRole::Other || folders[i].path.len() != 1 { continue; }
+        let named = match folders[i].name.trim().to_lowercase().as_str() {
+            "drafts" | "draft" => FolderRole::Drafts,
+            "sent" | "sent items" | "sent mail" | "sent messages" => FolderRole::Sent,
+            "trash" | "deleted items" | "deleted messages" | "bin" => FolderRole::Trash,
+            "junk" | "spam" | "junk e-mail" | "junk email" | "junk mail" | "bulk mail" => FolderRole::Junk,
+            "archive" | "archives" => FolderRole::Archive,
+            _ => continue,
+        };
+        if !folders.iter().any(|f| f.role == named) { folders[i].role = named; }
+    }
+}
+
 fn folder(mailbox: &Value, all: &[Value], account: &AccountId) -> Option<Folder> {
     let (id, name) = (mailbox["id"].as_str()?, mailbox["name"].as_str()?);
     // Walk up the parents for the path; the depth cap stops a malformed cycle.
@@ -276,7 +409,7 @@ fn folder(mailbox: &Value, all: &[Value], account: &AccountId) -> Option<Folder>
         parent = above["parentId"].as_str();
     }
     let count = |key: &str| mailbox[key].as_u64().unwrap_or(0) as u32;
-    Some(Folder { id: FolderId::from(id), account: account.clone(), name: name.to_owned(), path, role: role(mailbox["role"].as_str()), unread: count("unreadEmails"), total: count("totalEmails") })
+    Some(Folder { id: FolderId(scope(account, id)), account: account.clone(), name: name.to_owned(), path, role: role(mailbox["role"].as_str()), unread: count("unreadEmails"), total: count("totalEmails") })
 }
 
 fn addresses(list: &Value) -> Vec<Address> {
@@ -284,22 +417,30 @@ fn addresses(list: &Value) -> Vec<Address> {
 }
 
 /// An `Email` object as an envelope of `folder`, or `None` if it is not in that mailbox.
-fn envelope(email: &Value, folder: &FolderId) -> Option<Envelope> {
-    if email["mailboxIds"][&folder.0] != true { return None; }
+fn envelope(email: &Value, account: &AccountId, folder: &FolderId) -> Option<Envelope> {
+    if email["mailboxIds"][unscope(account, &folder.0).ok()?] != true { return None; }
     let mut flags = Flags::empty();
     for (flag, keyword) in KEYWORDS { if email["keywords"][keyword] == true { flags.insert(flag); } }
     let from = addresses(&email["from"]).into_iter().next().unwrap_or(Address { name: None, email: String::new() });
     Some(Envelope {
-        id: MessageId::from(email["id"].as_str()?),
+        id: MessageId(scope(account, email["id"].as_str()?)),
         folder: folder.clone(),
-        thread: ThreadId::from(email["threadId"].as_str().unwrap_or_default()),
+        thread: ThreadId(scope(account, email["threadId"].as_str().unwrap_or_default())),
         from,
         to: addresses(&email["to"]),
         cc: addresses(&email["cc"]),
         subject: email["subject"].as_str().unwrap_or_default().to_owned(),
-        preview: email["preview"].as_str().unwrap_or_default().to_owned(),
-        date: email["receivedAt"].as_str().and_then(session::parse_utc).unwrap_or(0),
+        preview: one_line(email["preview"].as_str().unwrap_or_default()),
+        // The Date header, as the IMAP backend uses; the arrival time when there is none.
+        date: email["sentAt"].as_str().or(email["receivedAt"].as_str()).and_then(session::parse_utc).unwrap_or(0),
         flags,
         attachments: Vec::new(),
     })
+}
+
+/// A server's preview as one line of at most [`PREVIEW_CHARS`] characters. Servers send up to 256
+/// characters with the message's own line breaks (Stalwart ends it with one).
+fn one_line(text: &str) -> String {
+    let words: Vec<&str> = text.split(|c: char| c.is_whitespace() || c.is_control()).filter(|w| !w.is_empty()).collect();
+    words.join(" ").chars().take(PREVIEW_CHARS).collect()
 }

@@ -18,6 +18,7 @@ members = [
     "crates/ravenglass-relay",
     "crates/ravenglass-theme",
     "crates/ravenglass-brand",
+    "crates/ravenglass-check",
 ]
 default-members = ["app"]
 exclude = ["vendor", "spikes"]
@@ -81,6 +82,8 @@ hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 tokio-tungstenite = "0.29"
 futures-util = { version = "0.3", default-features = false }
+# ravenglass-check: the password prompt without echo.
+rpassword = "7"
 
 [patch.crates-io]
 # Required: apps that build Rune patch the same crates, from the same rev (see docs/reference/rune-core-README.md, "Depending on Rune").

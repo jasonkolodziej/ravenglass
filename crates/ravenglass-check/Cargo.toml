@@ -1,0 +1,21 @@
+[package]
+name = "ravenglass-check"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Checks a real mail account with Ravenglass's own protocol code, read-only by default, and prints a report that is safe to paste into a bug report."
+
+[dependencies]
+mail-core = { path = "../mail-core" }
+mail-auth = { path = "../mail-auth" }
+mail-imap = { path = "../mail-imap" }
+mail-jmap = { path = "../mail-jmap", features = ["http"] }
+mail-render = { path = "../mail-render" }
+ravenglass-accounts = { path = "../ravenglass-accounts" }
+mail-parser.workspace = true
+rpassword.workspace = true
+
+[dev-dependencies]
+# tests/servers.rs shares mail-imap's helpers for the real servers (tests/real), which use rustls.
+tokio-rustls.workspace = true

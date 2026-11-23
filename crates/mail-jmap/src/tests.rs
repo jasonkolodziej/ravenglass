@@ -13,12 +13,18 @@ struct Server {
     /// `(state after the change, kind, email id)`.
     log: Vec<(u64, &'static str, String)>,
     state: u64,
+    /// Each email's `mailboxIds` after every change, for `Email/queryChanges`.
+    history: Vec<(u64, BTreeMap<String, Value>)>,
     submissions: Vec<Value>,
     requests: u32,
 }
 
 impl Server {
-    fn touch(&mut self, kind: &'static str, id: &str) { self.state += 1; self.log.push((self.state, kind, id.to_owned())); }
+    fn touch(&mut self, kind: &'static str, id: &str) {
+        self.state += 1;
+        self.log.push((self.state, kind, id.to_owned()));
+        self.history.push((self.state, self.emails.iter().map(|(id, e)| (id.clone(), e["mailboxIds"].clone())).collect()));
+    }
 
     fn deliver(&mut self, id: &str, mailbox: &str, subject: &str, minute: u32, seen: bool) {
         let blob = format!("blob-{id}");
@@ -45,7 +51,18 @@ impl Server {
                 let mut found: Vec<&Value> = self.emails.values().filter(|e| e["mailboxIds"][mailbox] == true).collect();
                 found.sort_by(|a, b| b["receivedAt"].as_str().cmp(&a["receivedAt"].as_str()));
                 let (position, limit) = (args["position"].as_u64().unwrap_or(0) as usize, args["limit"].as_u64().unwrap_or(u64::MAX) as usize);
-                ok(json!({ "ids": found.iter().skip(position).take(limit).map(|e| e["id"].clone()).collect::<Vec<_>>() }))
+                ok(json!({ "ids": found.iter().skip(position).take(limit).map(|e| e["id"].clone()).collect::<Vec<_>>(), "queryState": self.state.to_string() }))
+            }
+            "Email/queryChanges" => {
+                let Some(since) = args["sinceQueryState"].as_str().and_then(|s| s.parse::<u64>().ok()) else { return ("error".into(), json!({ "type": "cannotCalculateChanges" })) };
+                let mailbox = args["filter"]["inMailbox"].as_str().unwrap_or_default();
+                let empty = BTreeMap::new();
+                let then = self.history.iter().rev().find(|(s, _)| *s <= since).map_or(&empty, |(_, m)| m);
+                let was: Vec<&String> = then.iter().filter(|(_, m)| m[mailbox] == true).map(|(id, _)| id).collect();
+                let is: Vec<&String> = self.emails.iter().filter(|(_, e)| e["mailboxIds"][mailbox] == true).map(|(id, _)| id).collect();
+                let removed: Vec<&&String> = was.iter().filter(|id| !is.contains(id)).collect();
+                let added: Vec<Value> = is.iter().filter(|id| !was.contains(id)).map(|id| json!({ "id": id, "index": 0 })).collect();
+                ok(json!({ "oldQueryState": since.to_string(), "newQueryState": self.state.to_string(), "removed": removed, "added": added }))
             }
             "Email/get" => {
                 let properties = strings(&args["properties"]);
@@ -63,6 +80,7 @@ impl Server {
                 ok(json!({ "created": of("created"), "updated": of("updated"), "destroyed": of("destroyed"), "newState": page.last().map_or(since, |(s, _, _)| *s).to_string(), "hasMoreChanges": page.len() < pending.len() }))
             }
             "Email/set" => {
+                for id in strings(&args["destroy"]) { if self.emails.remove(&id).is_some() { self.touch("destroyed", &id); } }
                 let mut not_updated = serde_json::Map::new();
                 for (id, patch) in args["update"].as_object().cloned().unwrap_or_default() {
                     let Some(email) = self.emails.get_mut(&id) else { not_updated.insert(id, json!({ "type": "notFound" })); continue };
@@ -87,6 +105,7 @@ impl Server {
                 ok(json!({ "created": { "new": { "id": id } } }))
             }
             "Identity/get" => ok(json!({ "list": [{ "id": "id-other", "email": "other@example.com" }, { "id": "id-me", "email": "me@example.com" }] })),
+            "EmailSubmission/set" if args["create"]["send"]["envelope"]["rcptTo"][0]["email"] == "refused@example.com" => ok(json!({ "notCreated": { "send": { "type": "forbiddenToSend" } } })),
             "EmailSubmission/set" => { self.submissions.push(args["create"]["send"].clone()); ok(json!({ "created": { "send": { "id": "sub1" } } })) }
             _ => ("error".into(), json!({ "type": "unknownMethod" })),
         }
@@ -136,7 +155,7 @@ impl JmapHttp for &Fake {
 
 fn backend(fake: &Fake) -> JmapBackend<&Fake> { JmapBackend::new(AccountId::from("fastmail"), "https://jmap.example/session", fake) }
 
-fn ids(list: &[Envelope]) -> Vec<&str> { list.iter().map(|e| e.id.0.as_str()).collect() }
+fn ids(list: &[Envelope]) -> Vec<&str> { list.iter().map(|e| e.id.0.strip_prefix("fastmail/").unwrap()).collect() }
 
 #[test]
 fn folders_come_with_roles_paths_and_counts() {
@@ -145,13 +164,42 @@ fn folders_come_with_roles_paths_and_counts() {
     assert_eq!(folders.iter().map(|f| f.role).collect::<Vec<_>>(), [FolderRole::Inbox, FolderRole::Drafts, FolderRole::Sent, FolderRole::Archive, FolderRole::Other]);
     assert_eq!((folders[0].total, folders[0].unread), (5, 2));
     assert_eq!(folders[4].path, ["Archive", "2026"]);
+    // Ids carry the account, so two JMAP accounts on one server never share a folder or message.
+    assert_eq!(folders[0].id, FolderId::from("fastmail/in"));
+    let b = backend(&fake);
+    assert!(matches!(block_on(b.sync_folder(&FolderId::from("other/in"), &SyncToken::default())), Err(MailError::NotFound(_))));
+    assert!(matches!(block_on(b.fetch_body(&MessageId::from("m0"))), Err(MailError::NotFound(_))));
+}
+
+#[test]
+fn a_refused_submission_leaves_no_copy_in_sent() {
+    let fake = Fake::new();
+    let b = backend(&fake);
+    let me = Address::new("Me", "me@example.com");
+    let refused = block_on(b.send(b"Subject: Not sent\r\n\r\nhi", &me, &[Address::new("R", "refused@example.com")]));
+    assert_eq!(refused, Err(MailError::Server("submission: forbiddenToSend".into())));
+    let s = fake.server.lock().unwrap();
+    assert!(s.emails.values().all(|e| e["subject"] != "Not sent"), "the copy filed in Sent was taken back");
+}
+
+#[test]
+fn a_user_made_archive_gets_the_role_when_the_server_gives_none() {
+    // Stalwart gives a mailbox a user created no role; MoveToRole(Archive) then had nowhere to go.
+    let folder = |id: &str, name: &str, role: FolderRole, depth: usize| Folder {
+        id: FolderId::from(id), account: AccountId::from("a"), name: name.into(), path: vec![name.to_owned(); depth], role, unread: 0, total: 0,
+    };
+    let mut folders = vec![folder("1", "Inbox", FolderRole::Inbox, 1), folder("2", "Junk Mail", FolderRole::Junk, 1), folder("3", "Archive", FolderRole::Other, 1),
+        folder("4", "Spam", FolderRole::Other, 1), folder("5", "Sent", FolderRole::Other, 2)];
+    roles_from_names(&mut folders);
+    assert_eq!(folders.iter().map(|f| f.role).collect::<Vec<_>>(), [FolderRole::Inbox, FolderRole::Junk, FolderRole::Archive, FolderRole::Other, FolderRole::Other],
+        "the server's Junk wins over a name, and nested folders keep no role");
 }
 
 #[test]
 fn full_sync_then_changes_report_new_changed_moved_and_destroyed_mail() {
     let fake = Fake::new();
     let b = backend(&fake);
-    let inbox = FolderId::from("in");
+    let inbox = FolderId::from("fastmail/in");
     let first = block_on(b.sync_folder(&inbox, &SyncToken::default())).unwrap();
     assert_eq!(ids(&first.added), ["m4", "m3", "m2", "m1", "m0"], "newest first");
     let e = &first.added[4];
@@ -169,40 +217,65 @@ fn full_sync_then_changes_report_new_changed_moved_and_destroyed_mail() {
         s.touch("destroyed", "m2");
     }
     let delta = block_on(b.sync_folder(&inbox, &first.token)).unwrap();
-    assert_eq!(ids(&delta.added), ["m9", "m0"]);
-    assert!(delta.added[1].flags.contains(Flags::FLAGGED));
-    assert_eq!(delta.removed, [MessageId::from("m1"), MessageId::from("m2")]);
+    assert_eq!(ids(&delta.added), ["m0", "m9"]);
+    assert!(delta.added[0].flags.contains(Flags::FLAGGED));
+    // m1 moved and keeps its id: the archive's sync moves it, so the inbox does not remove it
+    // (a removal could delete the row the archive's sync already moved). m2 is gone.
+    assert_eq!(delta.removed, [MessageId::from("fastmail/m2")]);
     assert_ne!(delta.token, first.token);
     // The archive sees the same changes from its side.
-    let archive = block_on(b.sync_folder(&FolderId::from("ar"), &first.token)).unwrap();
-    assert_eq!(ids(&archive.added), ["m1"]);
-    // A state the server cannot diff from falls back to a full sync.
-    let stale = block_on(b.sync_folder(&inbox, &SyncToken("not-a-state".into()))).unwrap();
-    assert_eq!(ids(&stale.added), ["m9", "m4", "m3", "m0"]);
+    let archive_first = block_on(b.sync_folder(&FolderId::from("fastmail/ar"), &SyncToken::default())).unwrap();
+    assert_eq!(ids(&archive_first.added), ["a0", "m1"]);
+    // A state the server cannot diff from, or a token from before query states, means a full sync.
+    for stale in ["q1 not-a-state 0", "not-a-state", "5"] {
+        let full = block_on(b.sync_folder(&inbox, &SyncToken(stale.into()))).unwrap();
+        assert_eq!(ids(&full.added), ["m9", "m4", "m3", "m0"], "{stale}");
+    }
+}
+
+#[test]
+fn changes_in_other_folders_are_not_removals_here() {
+    let fake = Fake::new();
+    let b = backend(&fake);
+    let (inbox, archive) = (FolderId::from("fastmail/in"), FolderId::from("fastmail/ar"));
+    let first_inbox = block_on(b.sync_folder(&inbox, &SyncToken::default())).unwrap();
+    let first_archive = block_on(b.sync_folder(&archive, &SyncToken::default())).unwrap();
+    {
+        let mut s = fake.server.lock().unwrap();
+        // Mail arrives in the archive, and an archived message is flagged.
+        s.deliver("a1", "ar", "Filed", 55, true);
+        s.emails.get_mut("a0").unwrap()["keywords"]["$flagged"] = json!(true);
+        s.touch("updated", "a0");
+    }
+    // Before, the inbox reported both as removed, and the store deleted them from the archive.
+    let inbox_delta = block_on(b.sync_folder(&inbox, &first_inbox.token)).unwrap();
+    assert!(inbox_delta.added.is_empty() && inbox_delta.removed.is_empty(), "{inbox_delta:?}");
+    let archive_delta = block_on(b.sync_folder(&archive, &first_archive.token)).unwrap();
+    assert_eq!(ids(&archive_delta.added), ["a0", "a1"]);
 }
 
 #[test]
 fn bodies_flags_moves_drafts_and_sending() {
     let fake = Fake::new();
     let b = backend(&fake);
-    let m0 = MessageId::from("m0");
+    let m0 = MessageId::from("fastmail/m0");
     assert_eq!(block_on(b.fetch_body(&m0)).unwrap().bytes, b"Subject: Subject 0\r\n\r\nbody of m0");
-    assert!(matches!(block_on(b.fetch_body(&MessageId::from("nope"))), Err(MailError::NotFound(_))));
+    assert!(matches!(block_on(b.fetch_body(&MessageId::from("fastmail/nope"))), Err(MailError::NotFound(_))));
 
     block_on(b.set_flags(std::slice::from_ref(&m0), Flags::SEEN | Flags::FLAGGED, Flags::empty())).unwrap();
     block_on(b.set_flags(std::slice::from_ref(&m0), Flags::empty(), Flags::FLAGGED)).unwrap();
-    block_on(b.move_to(std::slice::from_ref(&m0), &FolderId::from("ar"))).unwrap();
+    block_on(b.move_to(std::slice::from_ref(&m0), &FolderId::from("fastmail/ar"))).unwrap();
     {
         let s = fake.server.lock().unwrap();
         assert_eq!((&s.emails["m0"]["keywords"], &s.emails["m0"]["mailboxIds"]), (&json!({ "$seen": true }), &json!({ "ar": true })));
     }
-    assert!(matches!(block_on(b.move_to(&[MessageId::from("gone")], &FolderId::from("ar"))), Err(MailError::NotFound(_))));
+    assert!(matches!(block_on(b.move_to(&[MessageId::from("fastmail/gone")], &FolderId::from("fastmail/ar"))), Err(MailError::NotFound(_))));
 
     let draft = block_on(b.append_draft(b"Subject: Draft one\r\n\r\nhi")).unwrap();
     let me = Address::new("Me", "ME@example.com");
     block_on(b.send(b"Subject: Sent one\r\n\r\nhi", &me, &[Address::new("O", "odin@asgard.example")])).unwrap();
     let s = fake.server.lock().unwrap();
-    assert_eq!((&s.emails[&draft.0]["mailboxIds"], &s.emails[&draft.0]["keywords"]["$draft"]), (&json!({ "dr": true }), &json!(true)));
+    assert_eq!((&s.emails[draft.0.strip_prefix("fastmail/").unwrap()]["mailboxIds"], &s.emails[draft.0.strip_prefix("fastmail/").unwrap()]["keywords"]["$draft"]), (&json!({ "dr": true }), &json!(true)));
     let submission = &s.submissions[0];
     assert_eq!(submission["identityId"], "id-me", "the identity matching the sender, whatever its case");
     assert_eq!(submission["envelope"], json!({ "mailFrom": { "email": "ME@example.com" }, "rcptTo": [{ "email": "odin@asgard.example" }] }));
@@ -230,4 +303,17 @@ fn dates_with_offsets_and_fractions_parse() {
     assert_eq!(parse_utc("2026-11-13T17:44:00.250+01:00"), Some(1_794_588_240));
     assert_eq!(parse_utc("2026-11-13T10:14:00-06:30"), Some(1_794_588_240));
     assert_eq!((parse_utc("yesterday"), parse_utc("2026-13-01T00:00:00Z"), parse_utc("")), (None, None, None));
+}
+
+#[test]
+fn envelopes_take_the_sent_date_and_a_one_line_preview() {
+    // Stalwart's previews keep the message's line breaks and end with one; the list wants one line.
+    let email = json!({ "id": "e1", "mailboxIds": { "in": true }, "keywords": {}, "subject": "s", "preview": "First line.\n\n  Second\tline.\r\n",
+        "sentAt": "2026-11-13T17:44:00+01:00", "receivedAt": "2026-11-20T09:00:00Z" });
+    let e = envelope(&email, &AccountId::from("fastmail"), &FolderId::from("fastmail/in")).unwrap();
+    assert_eq!(e.preview, "First line. Second line.");
+    assert_eq!(e.date, 1_794_588_240, "the Date header, as on IMAP, not when it arrived");
+    let long = json!({ "id": "e2", "mailboxIds": { "in": true }, "preview": "word ".repeat(100), "receivedAt": "2026-11-13T16:44:00Z" });
+    let e = envelope(&long, &AccountId::from("fastmail"), &FolderId::from("fastmail/in")).unwrap();
+    assert_eq!((e.preview.chars().count(), e.date), (200, 1_794_588_240), "no sentAt: the arrival time");
 }

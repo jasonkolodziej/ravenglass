@@ -102,6 +102,15 @@ pub fn name_for_new(listed: &[Listed], leaf: &str) -> String {
     if !delimiter.is_empty() && others().next().is_some() && others().all(|l| l.mailbox.starts_with(&prefix)) { format!("{prefix}{leaf}") } else { leaf.to_owned() }
 }
 
+/// Where to create `leaf` when the server refuses it at the top level: under INBOX, on servers
+/// whose personal namespace is `INBOX.` (Courier, Dovecot set up that way). An account there that
+/// holds only an inbox gives no other hint; the NAMESPACE reply would, but async-imap cannot read it.
+pub fn under_inbox(listed: &[Listed], leaf: &str) -> Option<String> {
+    let inbox = listed.iter().find(|l| l.mailbox.eq_ignore_ascii_case("INBOX"))?;
+    let delimiter = inbox.delimiter.as_deref().filter(|d| !d.is_empty())?;
+    Some(format!("{}{delimiter}{leaf}", inbox.mailbox))
+}
+
 /// Modified UTF-7 (RFC 3501 §5.1.3) to text. Anything malformed is returned as it came.
 pub fn decode_utf7(name: &str) -> String {
     use base64::Engine;
