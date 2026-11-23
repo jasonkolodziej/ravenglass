@@ -345,3 +345,31 @@ fn a_key_clash_in_the_config_is_reported_and_the_built_in_keys_stay() {
     assert!(toast.error && toast.text.contains("clashes"), "{toast:?}");
     assert!(crate::keys::clashes().is_empty());
 }
+
+#[test]
+fn remote_images_follow_the_privacy_setting() {
+    use crate::actions::Action;
+    use mail_core::machine::image_load::State;
+    use ravenglass_config::RemoteImages;
+    let open_newsletter = |policy: RemoteImages| {
+        let mut s = AppState::demo_inline();
+        s.shell.config.privacy.remote_images = policy;
+        let row = s.rows().iter().position(|e| e.from.email.starts_with("news@dioxus")).expect("the newsletter");
+        s.ws_mut().sel = row;
+        s.open_selected(false);
+        s
+    };
+    let open = |s: &AppState| s.ws().open.as_ref().expect("an open message").id.clone();
+    let mut asked = open_newsletter(RemoteImages::Ask);
+    assert!(matches!(asked.body().expect("a body").images, State::Blocked { .. }));
+    assert!(asked.images_held(&open(&asked)), "held back until asked");
+    asked.apply(Action::LoadImages { always: false });
+    assert!(!asked.images_held(&open(&asked)), "the notice goes once they are loaded");
+    let always = open_newsletter(RemoteImages::Always);
+    assert!(always.shell.images_loaded.contains(&open(&always)) && !always.images_held(&open(&always)), "allowed without asking");
+    let mut never = open_newsletter(RemoteImages::Never);
+    assert!(!never.images_held(&open(&never)), "no offer to load them");
+    never.apply(Action::LoadImages { always: false });
+    assert!(never.shell.images_loaded.is_empty(), "the load key does nothing");
+    assert!(never.toast.as_ref().is_some_and(|t| t.text.contains("remote images are off")));
+}

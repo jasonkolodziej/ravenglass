@@ -223,6 +223,18 @@ impl Profile {
         Ok(())
     }
 
+    /// Make the folders and, if it is not there yet, an empty `mail.db` that only the user can
+    /// read: SQLite gives its `-wal` and `-shm` files the database's own mode.
+    pub fn prepare_store(&self) -> Result<(), String> {
+        self.ensure_dirs()?;
+        let path = self.store_file();
+        if !path.exists() {
+            std::fs::File::create(&path).map_err(|e| format!("mail.db: {}", e.kind()))?;
+            platform::restrict(&path, false);
+        }
+        Ok(())
+    }
+
     pub fn save_accounts(&self, accounts: &[AccountConfig]) -> Result<(), String> {
         self.ensure_dirs()?;
         write_private(&self.accounts_file(), &accounts_to_toml(accounts)?)

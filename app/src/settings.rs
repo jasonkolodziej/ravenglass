@@ -205,6 +205,16 @@ impl AppState {
     /// Whether the reader offers to load remote images (`privacy.remote_images = "never"` hides it).
     pub fn images_offered(&self) -> bool { self.shell.config.privacy.remote_images != RemoteImages::Never }
 
+    /// The reader says "remote images blocked" for this message: they are held back and the
+    /// user may load them.
+    pub fn images_held(&self, message: &MessageId) -> bool { self.images_offered() && !self.shell.images_loaded.contains(message) }
+
+    /// The engine let a message's images through.
+    pub fn images_allowed(&mut self, message: MessageId) {
+        if self.shell.images_loaded.len() >= 512 { self.shell.images_loaded.clear(); }
+        self.shell.images_loaded.insert(message);
+    }
+
     /// `privacy.remote_images = "always"`: a message that opens with images held back gets them.
     pub fn auto_images(&mut self, message: &MessageId) {
         if self.shell.config.privacy.remote_images != RemoteImages::Always { return; }

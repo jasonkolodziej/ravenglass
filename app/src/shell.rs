@@ -116,6 +116,8 @@ pub struct Shell {
     /// The add-account form, when it is up.
     pub flow: Option<Flow>,
     pub lock: Lock,
+    /// Messages whose remote images were allowed in this run (the reader drops its notice).
+    pub images_loaded: std::collections::BTreeSet<mail_core::MessageId>,
     /// The OS appearance, as the last view run saw it.
     pub system_dark: Cell<Option<bool>>,
     /// The loopback address of a sign-in waiting for the browser.
@@ -142,6 +144,7 @@ impl Default for Shell {
             colors: false,
             flow: None,
             lock: Lock::default(),
+            images_loaded: Default::default(),
             system_dark: Cell::new(None),
             signin: None,
             tokens: None,
@@ -255,7 +258,7 @@ impl AppState {
             undo_send_secs: f64::from(self.shell.config.ui.undo_send_seconds),
         };
         let (services, profile) = (self.shell.services.clone(), self.shell.profile.clone());
-        let prepare = move || match &profile { Some(profile) => profile.ensure_dirs(), None => Ok(()) };
+        let prepare = move || match &profile { Some(profile) => profile.prepare_store(), None => Ok(()) };
         if self.runs_inline() || self.shell.inline {
             let now = runner::now();
             match prepare().and_then(|()| link::real_engine(&spec, &services, now)) {
@@ -346,7 +349,7 @@ impl AppState {
                 if self.toast.as_ref().is_none_or(|t| !t.error) { self.toast("settings reloaded"); }
             }
             JobDone::Connected { problems, tokens } => {
-                if let Some((id, problem)) = problems.first() { self.error(format!("{id}: {problem}")); }
+                // The workspace bar names them for as long as they last; no toast on top of that.
                 self.shell.problems = problems.into_iter().collect();
                 self.shell.tokens = tokens;
             }

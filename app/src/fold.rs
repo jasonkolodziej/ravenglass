@@ -175,7 +175,8 @@ impl AppState {
                 }
                 self.error(format!("{context}: {message}"));
             }
-            Event::OutboxState { .. } | Event::ImagesAllowed { .. } | Event::Addresses { .. } | Event::WakeAt(_) | Event::Watch { .. } => {}
+            Event::ImagesAllowed { message } => self.images_allowed(message),
+            Event::OutboxState { .. } | Event::Addresses { .. } | Event::WakeAt(_) | Event::Watch { .. } => {}
             // Compose is not drawn yet; its events have nowhere to go.
             Event::Draft(_) | Event::DraftSaved { .. } | Event::DraftClosed { .. } | Event::LinkHover { .. } => {}
             Event::HtmlLaidOut { info, .. } => {

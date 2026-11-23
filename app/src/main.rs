@@ -1,6 +1,8 @@
 //! Ravenglass: a character-grid mail client on Rune (plan §4).
 //!
-//! Run:       cargo run -p ravenglass
+//! Run:       cargo run -p ravenglass                      (your profile; `:account add you@example.com`)
+//!            cargo run -p ravenglass -- --demo            (the built-in demo accounts)
+//!            cargo run -p ravenglass -- --profile <dir>   (or RAVENGLASS_PROFILE: everything in one folder)
 //! Headless:  cargo run -p ravenglass -- --snap out/default.png --scene default --size 1400x880 --scale 2
 //!            cargo run -p ravenglass -- --snap out/narrow.png --scene narrow --size 800x700 --scale 2
 //!            cargo run -p ravenglass -- --tree out/tree.json --scene default
