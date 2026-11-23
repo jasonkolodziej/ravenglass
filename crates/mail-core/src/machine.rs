@@ -3,9 +3,14 @@
 //! performing them. Timers are events: a timed variant stores its due time and the caller wakes us.
 
 use crate::types::MailError;
+use serde::{Deserialize, Serialize};
+
+pub mod compose;
+pub mod html_view;
+pub mod image_load;
 
 /// Effects the app performs (network calls, wakeups) and feeds results back as events.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Effect {
     Connect,
     Authenticate,
@@ -20,7 +25,7 @@ pub enum Effect {
 pub mod account_sync {
     use super::*;
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     pub enum State {
         Disconnected,
         Connecting { attempt: u32 },
@@ -31,7 +36,7 @@ pub mod account_sync {
         AuthFailed,
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     pub enum Event {
         Start,
         Connected,
@@ -72,7 +77,7 @@ pub mod account_sync {
 pub mod outbox {
     use super::*;
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     pub enum State {
         Queued { undo_until: f64 },
         Sending { attempt: u32 },
@@ -81,7 +86,7 @@ pub mod outbox {
         Cancelled,
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     pub enum Event { Undo, Timer(f64), SendOk, SendErr(MailError), Retry }
 
     pub fn queue(now: f64, undo_secs: f64) -> (State, Vec<Effect>) {

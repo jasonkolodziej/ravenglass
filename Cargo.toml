@@ -27,6 +27,8 @@ rune-kit = { git = "https://github.com/anomalyco/rune", rev = "0ca075619d116f8f6
 serde    = { version = "1", features = ["derive"] }
 toml     = "0.8"
 thiserror = "2"
+serde_json = "1"
+rusqlite = { version = "0.43", features = ["bundled"] }
 
 [patch.crates-io]
 # Required: apps that build Rune patch the same crates, from the same rev (see docs/reference/rune-core-README.md, "Depending on Rune").

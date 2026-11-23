@@ -54,3 +54,62 @@ fn send_after_deadline_then_retry_after_failure() {
     step(&mut s, Event::SendOk);
     assert_eq!(s, State::Sent);
 }
+
+#[test]
+fn compose_autosaves_after_a_quiet_period_and_keeps_edits_made_while_saving() {
+    use compose::*;
+    let mut s = open();
+    assert_eq!(step(&mut s, Event::Edit, 0.0), vec![Effect::WakeAt(AUTOSAVE_SECS)]);
+    assert!(step(&mut s, Event::Timer(1.0), 1.0).is_empty(), "early timer is ignored");
+    assert_eq!(step(&mut s, Event::Timer(3.0), 3.0), vec![Effect::AppendDraft]);
+    step(&mut s, Event::Edit, 3.5);
+    assert_eq!(step(&mut s, Event::DraftSaved, 4.0), vec![Effect::WakeAt(7.0)]);
+    assert_eq!(s, State::Editing { dirty_since: Some(4.0) });
+}
+
+#[test]
+fn compose_send_queues_once_and_discard_deletes_the_draft() {
+    use compose::*;
+    let mut s = open();
+    assert_eq!(step(&mut s, Event::Send, 0.0), vec![Effect::QueueSend]);
+    assert!(step(&mut s, Event::Send, 0.0).is_empty());
+    let mut d = open();
+    assert_eq!(step(&mut d, Event::Discard, 0.0), vec![Effect::DeleteDraft]);
+    assert_eq!(d, State::Closed);
+}
+
+#[test]
+fn images_stay_blocked_until_allowed_and_remember_the_sender_on_request() {
+    use image_load::*;
+    let (mut s, fx) = open(2, false);
+    assert!(fx.is_empty());
+    assert!(step(&mut s, Event::Fetched { ok: true }).is_empty(), "nothing loads while blocked");
+    assert_eq!(step(&mut s, Event::Allow(Scope::Sender)), vec![Effect::RememberSender, Effect::FetchAll]);
+    step(&mut s, Event::Fetched { ok: true });
+    step(&mut s, Event::Fetched { ok: false });
+    assert_eq!(s, State::Failed { failed: 1 });
+    assert_eq!(open(3, true).1, vec![Effect::FetchAll]);
+    assert_eq!(open(0, false).0, State::Loaded);
+}
+
+#[test]
+fn html_view_rasters_in_tiles_and_relayouts_only_on_width() {
+    use html_view::*;
+    let mut s = open(680);
+    assert_eq!(step(&mut s, Event::Parsed), vec![Effect::Layout { width: 680 }]);
+    assert_eq!(step(&mut s, Event::LaidOut { height: 2500 }), vec![Effect::Raster { tiles: 3 }]);
+    for _ in 0..3 { step(&mut s, Event::TileDone); }
+    assert_eq!(s, State::Ready { width: 680, height: 2500 });
+    assert!(step(&mut s, Event::Width(680)).is_empty(), "same width keeps the bitmap");
+    assert_eq!(step(&mut s, Event::Repaint), vec![Effect::Raster { tiles: 3 }]);
+    assert_eq!(step(&mut s, Event::Width(500)), vec![Effect::Layout { width: 500 }]);
+}
+
+#[test]
+fn html_view_crash_falls_back_for_good() {
+    use html_view::*;
+    let mut s = open(680);
+    assert_eq!(step(&mut s, Event::Crashed), vec![Effect::Fallback]);
+    assert!(step(&mut s, Event::Parsed).is_empty());
+    assert_eq!(s, State::Failed);
+}

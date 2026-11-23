@@ -8,3 +8,4 @@ description = "Ravenglass domain types, the MailBackend trait and sync/outbox st
 
 [dependencies]
 thiserror.workspace = true
+serde.workspace = true

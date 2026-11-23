@@ -1,10 +1,12 @@
 //! Plain data. Ids are opaque strings so IMAP UIDs, JMAP ids and mock ids all fit.
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 macro_rules! id {
     ($name:ident) => {
-        #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+        #[serde(transparent)]
         pub struct $name(pub String);
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(&self.0) }
@@ -22,10 +24,10 @@ id!(ThreadId);
 /// Seconds since the Unix epoch, UTC. Kept as an integer so mock data is deterministic.
 pub type Timestamp = i64;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FolderRole { Inbox, Drafts, Sent, Archive, Trash, Junk, Flagged, Other }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Folder {
     pub id: FolderId,
     pub account: AccountId,
@@ -37,7 +39,7 @@ pub struct Folder {
     pub total: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Address { pub name: Option<String>, pub email: String }
 
 impl Address {
@@ -50,11 +52,11 @@ bitflags_lite! {
     pub struct Flags: u8 { SEEN = 1, FLAGGED = 2, ANSWERED = 4, DRAFT = 8, DELETED = 16 }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Attachment { pub name: String, pub mime: String, pub size: u64, pub content_id: Option<String> }
 
 /// What the list needs; bodies are fetched lazily.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Envelope {
     pub id: MessageId,
     pub folder: FolderId,
@@ -74,14 +76,14 @@ impl Envelope {
 }
 
 /// A fetched message: raw RFC 5322 bytes; `mail-render` parses them.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawMessage { pub id: MessageId, pub bytes: Vec<u8> }
 
 /// Opaque resume point for incremental sync (IMAP: UIDVALIDITY + HIGHESTMODSEQ; mock: a counter).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyncToken(pub String);
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FolderDelta {
     pub added: Vec<Envelope>,
     pub changed_flags: Vec<(MessageId, Flags)>,
@@ -89,10 +91,10 @@ pub struct FolderDelta {
     pub token: SyncToken,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IdleEvent { Exists(FolderId), FlagsChanged(FolderId), Expunged(FolderId) }
 
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MailError {
     #[error("authentication failed")]
     Auth,
@@ -110,7 +112,8 @@ pub type Result<T> = std::result::Result<T, MailError>;
 #[macro_export]
 macro_rules! bitflags_lite {
     (pub struct $name:ident: $t:ty { $($flag:ident = $v:expr),* $(,)? }) => {
-        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+        #[serde(transparent)]
         pub struct $name(pub $t);
         impl $name {
             $(pub const $flag: $name = $name($v);)*
