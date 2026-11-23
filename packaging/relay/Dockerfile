@@ -33,8 +33,8 @@ RUN case "$TARGETARCH" in \
       *) echo "unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac \
  && rustup target add "$(cat /target)"
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/src/target,id=relay-target-${TARGETARCH} \
     cargo zigbuild --release --locked -p ravenglass-relay --target "$(cat /target)" \
  && mkdir -p /out /out/data \
