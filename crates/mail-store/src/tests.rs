@@ -72,6 +72,7 @@ fn search_operators_combine() {
     assert!(!prefix.is_empty() && prefix.iter().all(|e| e.subject.contains("invoice")));
     let phrase = store.search(&Query::parse("\"green chile\""), None, 500).unwrap();
     assert!(!phrase.is_empty() && phrase.iter().all(|e| e.preview.contains("green chile")));
+    assert!(store.search(&Query::parse("\"chile green\""), None, 500).unwrap().is_empty(), "a phrase keeps its word order");
     assert!(store.search(&Query::parse("from:nobody-here"), None, 10).unwrap().is_empty());
 }
 

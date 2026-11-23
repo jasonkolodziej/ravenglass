@@ -2,9 +2,7 @@
 //!
 //! What this does: opens a window in the Night theme and draws the braille raven wallpaper with
 //! the empty-pane hint lines (plan §4 "Brand"). It is the first thing to get compiling.
-//! NOT YET COMPILED: written against Rune's API at rev 0ca07561 without a 1.99.1 toolchain.
-//! Expect small fixes; check each call against docs/reference/rune-core-README.md and
-//! docs/reference/rune-hello-main.rs.
+//! Compiles against Rune at rev 0ca07561 on Rust 1.99.1; the snapshots below render.
 //!
 //! Run:       cargo run
 //! Headless:  cargo run -- --snap out/wallpaper.png --size 1400x880 --scale 2

@@ -9,6 +9,11 @@ members = [
     "crates/mail-auth",
     "crates/mail-render",
     "crates/mail-blitz",
+    "crates/mail-jmap",
+    "crates/relay-proto",
+    "crates/relay-client",
+    "crates/ravenglass-engine",
+    "crates/ravenglass-relay",
     "crates/ravenglass-theme",
     "crates/ravenglass-brand",
 ]

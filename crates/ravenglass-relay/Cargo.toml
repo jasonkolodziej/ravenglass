@@ -1,0 +1,16 @@
+[package]
+name = "ravenglass-relay"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Ravenglass Relay: bridges the web client to IMAP/SMTP/JMAP. Request handling only; no server yet."
+
+[dependencies]
+mail-core = { path = "../mail-core" }
+relay-proto = { path = "../relay-proto" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+mail-mock = { path = "../mail-mock" }

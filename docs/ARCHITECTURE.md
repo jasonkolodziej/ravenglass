@@ -37,7 +37,7 @@ Ravenglass is one Rust codebase that ships as a native desktop mail client (macO
 | Look | Character grid modelled on the unstablebuild/rune IDE; Night and Frost themes | Brand and UX decided in the design canvas |
 | Name and icon | Ravenglass; icon D · Braille (dark + light) | Decided 2026-11-13 |
 
-Status: architecture proposal. The pure crates `mail-core`, `mail-mock`, `ravenglass-theme` and `ravenglass-brand` exist with 18 passing tests; the app and everything else below is design.
+Status: partly built. The crate table in `README.md` says what exists; in short, the core, the store and search, MIME parsing and sanitizing, the engine and the Relay protocol have tests, and the UI, the protocol backends, Blitz rendering and the web build are still design.
 
 ## 2. System context and deployment targets
 

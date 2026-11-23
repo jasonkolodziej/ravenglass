@@ -8,7 +8,7 @@ use crate::css::filter_css;
 use mail_core::MessageId;
 use std::borrow::Cow;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SanitizedHtml {
     pub html: String,
     /// Remote images kept in the markup, to be loaded only if the user allows it.

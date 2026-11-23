@@ -183,7 +183,7 @@ impl Store {
         let mut sql = format!("SELECT {} FROM messages m", rows::ENVELOPE_COLUMNS);
         let mut args: Vec<rusqlite::types::Value> = Vec::new();
         let mut filters: Vec<String> = Vec::new();
-        let mut bind = |args: &mut Vec<rusqlite::types::Value>, v: rusqlite::types::Value| { args.push(v); format!("?{}", args.len()) };
+        let bind = |args: &mut Vec<rusqlite::types::Value>, v: rusqlite::types::Value| { args.push(v); format!("?{}", args.len()) };
         if let Some(m) = query.fts_match() {
             sql.push_str(" JOIN search s ON s.rowid = m.rowid");
             filters.push(format!("search MATCH {}", bind(&mut args, m.into())));

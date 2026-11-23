@@ -1644,6 +1644,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mail-jmap"
+version = "0.0.0"
+dependencies = [
+ "mail-core",
+]
+
+[[package]]
 name = "mail-mock"
 version = "0.0.0"
 dependencies = [
@@ -1669,6 +1676,7 @@ dependencies = [
  "ammonia",
  "mail-core",
  "mail-parser",
+ "serde",
  "thiserror 2.0.21",
 ]
 
@@ -2698,6 +2706,30 @@ name = "ravenglass-brand"
 version = "0.0.0"
 
 [[package]]
+name = "ravenglass-engine"
+version = "0.0.0"
+dependencies = [
+ "mail-core",
+ "mail-mock",
+ "mail-render",
+ "mail-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "ravenglass-relay"
+version = "0.0.0"
+dependencies = [
+ "mail-core",
+ "mail-mock",
+ "relay-proto",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ravenglass-theme"
 version = "0.0.0"
 dependencies = [
@@ -2760,6 +2792,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "580c875845b41ecb1564ad1ae4703044cef774145e3d7a94dc2b3fa7c97868fd"
 dependencies = [
  "bitflags 2.13.2",
+]
+
+[[package]]
+name = "relay-client"
+version = "0.0.0"
+dependencies = [
+ "mail-core",
+ "mail-mock",
+ "ravenglass-relay",
+ "relay-proto",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "relay-proto"
+version = "0.0.0"
+dependencies = [
+ "mail-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

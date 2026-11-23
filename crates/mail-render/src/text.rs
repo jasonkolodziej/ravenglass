@@ -3,10 +3,10 @@
 /// Quoted runs longer than this many lines are folded ("Show quoted text").
 pub const QUOTE_FOLD_AFTER: usize = 3;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Span { Text(String), Link(String) }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Line {
     /// How many `>` markers the line had.
     pub quote_depth: u8,
@@ -21,7 +21,7 @@ impl Line {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TextBody { pub lines: Vec<Line> }
 
 impl TextBody {

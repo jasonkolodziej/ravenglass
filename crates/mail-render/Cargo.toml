@@ -11,3 +11,4 @@ mail-core = { path = "../mail-core" }
 mail-parser.workspace = true
 ammonia.workspace = true
 thiserror.workspace = true
+serde.workspace = true

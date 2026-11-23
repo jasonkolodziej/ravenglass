@@ -1,0 +1,12 @@
+[package]
+name = "relay-proto"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Ravenglass Relay API v1: the versioned contract between the web client and the Relay."
+
+[dependencies]
+mail-core = { path = "../mail-core" }
+serde.workspace = true
+serde_json.workspace = true

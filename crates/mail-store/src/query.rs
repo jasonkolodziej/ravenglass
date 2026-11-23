@@ -65,7 +65,15 @@ impl Query {
     pub fn fts_match(&self) -> Option<String> {
         let mut parts = Vec::new();
         let mut column = |col: &str, terms: &[String]| {
-            for t in terms { for w in words(t) { parts.push(format!("{col}{}", phrase(&w))); } }
+            for t in terms {
+                let words = words(t);
+                // Quoted words in a row are a phrase; a single word also matches as a prefix.
+                match words.as_slice() {
+                    [] => {}
+                    [word] => parts.push(format!("{col}\"{word}\"*")),
+                    _ => parts.push(format!("{col}\"{}\"", words.join(" "))),
+                }
+            }
         };
         column("", &self.text);
         column("sender : ", &self.from);
@@ -92,13 +100,11 @@ fn split(input: &str) -> Vec<(usize, usize)> {
 
 fn unquote(s: &str) -> &str { s.trim_matches('"') }
 
-/// FTS5 tokens of a user term: split where the `unicode61` tokenizer would.
+/// FTS5 tokens of a user term: split where the `unicode61` tokenizer would. Only letters and
+/// digits survive, which keeps user input out of FTS5 query syntax.
 fn words(term: &str) -> Vec<String> {
     term.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_owned).collect()
 }
-
-/// A quoted prefix term, so `git` finds `GitHub`. Quoting keeps user input out of FTS5 syntax.
-fn phrase(word: &str) -> String { format!("\"{}\"*", word.replace('"', "")) }
 
 /// `YYYY-MM-DD` → midnight UTC.
 pub fn parse_date(s: &str) -> Option<Timestamp> {

@@ -1,0 +1,18 @@
+[package]
+name = "ravenglass-engine"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Ravenglass engine: the Command/Event boundary over backends, the store, the outbox and rendering. No UI types."
+
+[dependencies]
+mail-core = { path = "../mail-core" }
+mail-store = { path = "../mail-store" }
+mail-render = { path = "../mail-render" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+mail-mock = { path = "../mail-mock" }
