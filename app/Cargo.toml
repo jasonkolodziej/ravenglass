@@ -12,8 +12,10 @@ path = "src/main.rs"
 
 [dependencies]
 rune = { workspace = true, features = ["tooling"] }   # `tooling`: headless --snap/--tree/--script in release too
-# rune-kit = { workspace = true, features = ["markdown"] }   # add in M2/M3 (TextArea, PopupList, Toast, Markdown)
 mail-core = { path = "../crates/mail-core" }
 mail-mock = { path = "../crates/mail-mock" }
+mail-store = { path = "../crates/mail-store" }
+mail-render = { path = "../crates/mail-render" }
+ravenglass-engine = { path = "../crates/ravenglass-engine" }
 ravenglass-theme = { path = "../crates/ravenglass-theme" }
 ravenglass-brand = { path = "../crates/ravenglass-brand" }
