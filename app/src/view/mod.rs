@@ -14,10 +14,10 @@ pub mod workspaces;
 
 use crate::grid::{Grid, Rect};
 use crate::modes::Mode;
-use crate::panes::{Axis, Kind, Placed};
+use crate::panes::{Axis, Gutter, Kind, Placed};
 use crate::state::{AppState, Frame, NARROW_COLS};
 use ravenglass_theme::Theme;
-use rune::{Color, Cx, El, el};
+use rune::{Color, Cursor, Cx, Drag, El, el};
 use std::rc::Rc;
 
 /// The root element's key; its laid-out size is the window's.
@@ -137,26 +137,37 @@ pub fn root(s: &AppState, cx: &mut Cx<AppState>) -> El {
     for pane in &layout.panes {
         root = root.child(pane_view(s, &ui, pane, pane.id == ws.panes.focus(), several));
     }
-    for gutter in &layout.gutters {
-        let r = gutter.rect;
-        let rule = match gutter.axis {
-            Axis::Cols => el().absolute(g.x(r.x) + (g.cell_w / 2.0).floor(), g.y(r.y)).size(1.0, g.y(r.h)),
-            Axis::Rows => el().absolute(g.x(r.x), g.y(r.y) + (g.cell_h / 2.0).floor()).size(g.x(r.w), 1.0),
-        };
-        root = root.child(rule.fill(ui.p.border).inert());
+    for (i, gutter) in layout.gutters.iter().enumerate() {
+        root = root.child(gutter_view(&ui, i, gutter));
     }
     if let Some(x) = chrome.rail_x {
         root = root.child(rail::rail(&ui, chrome.panes.h).absolute(x, g.y(BAR_ROWS)));
     }
     root = root.child(workspaces::bar(s, &ui, chrome.cols).absolute(0.0, chrome.bar_y));
-    if let Some(toast) = &s.toast {
-        let cols = chrome.panes.w;
-        root = root.child(toast::toast(&ui, toast, cols).absolute(0.0, chrome.bar_y - g.cell_h));
-    }
     if let Mode::Palette { query, selected } = &s.mode {
         root = root.child(palette::palette(&ui, query, *selected, chrome.cols, chrome.rows));
     }
     root
+}
+
+/// The cell-wide divider between two panes: a hairline down its middle, and a drag handle that
+/// moves the divider in whole cells.
+fn gutter_view(ui: &Ui, index: usize, gutter: &Gutter) -> El {
+    let g = &ui.g;
+    let axis = gutter.axis;
+    let rule = match axis {
+        Axis::Cols => el().absolute((g.cell_w / 2.0).floor(), 0.0).size(1.0, g.y(gutter.rect.h)),
+        Axis::Rows => el().absolute(0.0, (g.cell_h / 2.0).floor()).size(g.x(gutter.rect.w), 1.0),
+    };
+    ui.place(el().key(format!("gutter:{index}")).role("separator").label("Pane divider"), gutter.rect)
+        .cursor(match axis { Axis::Cols => Cursor::ResizeColumn, Axis::Rows => Cursor::ResizeRow })
+        .child(rule.fill(ui.p.border).inert())
+        .on_drag(move |s: &mut AppState, drag: &mut Drag, _tx| {
+            let frame = s.frame.get();
+            let [x, y] = drag.window_point();
+            let cell = match axis { Axis::Cols => frame.grid.cols_in(x.max(0.0)), Axis::Rows => frame.grid.rows_in(y.max(0.0)) };
+            s.ws_mut().panes.drag_gutter(index, cell, frame.panes);
+        })
 }
 
 /// One pane: its content by kind, the status line when it has the focus, and the focus bar.

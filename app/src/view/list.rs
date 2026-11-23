@@ -17,8 +17,9 @@ const NUM_COLS: usize = 3;
 const SENDER_COL: usize = 7;
 const SENDER_COLS: usize = 16;
 const SUBJECT_COL: usize = SENDER_COL + SENDER_COLS + 1;
-/// space, flag, space, attachment, space, time (5), space.
-const TAIL_COLS: usize = 11;
+/// space, flag, space, attachment, space, time, space.
+const TIME_COLS: usize = 6;
+const TAIL_COLS: usize = 6 + TIME_COLS;
 /// Rows of the pane above the list: the title and a blank line.
 const HEAD_ROWS: usize = 2;
 
@@ -109,7 +110,7 @@ fn row(s: &AppState, ui: &Ui, i: usize, cols: usize) -> El {
     first = if e.flags.contains(Flags::FLAGGED) { first.mark(Mark::Flag, p.flag) } else { first.gap(1) };
     first = first.gap(1);
     first = if e.attachments.is_empty() { first.gap(1) } else { first.mark(Mark::Clip, p.attachment) };
-    first = first.gap(1).put(&grid::fit_right(&timefmt::short(e.date, s.wall.now()), 5), p.muted);
+    first = first.gap(1).put(&grid::fit_right(&timefmt::short(e.date, s.wall.now()), TIME_COLS), p.muted);
 
     let second = Line::new().to(SUBJECT_COL).put(&grid::clip(&e.preview, cols.saturating_sub(SUBJECT_COL + 1)), p.muted);
 
@@ -120,9 +121,10 @@ fn row(s: &AppState, ui: &Ui, i: usize, cols: usize) -> El {
     row = row.child(first.el(ui, cols)).child(second.el(ui, cols));
     if cursor { row = row.child(el().absolute(0.0, 0.0).size(3.0, g.y(2)).fill(p.accent).inert()); }
     row.on_press(move |s: &mut AppState| select(s, &id))
-        .on_double_press(move |s: &mut AppState| {
+        .on_double_press_tx(move |s: &mut AppState, tx| {
             select(s, &open_id);
             s.perform(Action::Open);
+            crate::flush(s, tx);
         })
 }
 

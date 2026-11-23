@@ -1,20 +1,21 @@
-//! One-line toasts above the workspace bar: `archived 1 · u undo`.
+//! One-line toasts (`archived 1 · u undo`). They sit in the workspace bar's row, just left of the
+//! sync state, so they never cover a pane's status line.
 
 use super::Ui;
 use super::line::Line;
 use crate::grid;
 use crate::state::Toast;
-use rune::{El, LiveRegion, el};
+use rune::{El, LiveRegion};
 
-/// A line `cols` cells wide with the toast's block at its right end.
-pub fn toast(ui: &Ui, toast: &Toast, cols: usize) -> El {
-    let g = &ui.g;
+/// Cells the toast takes when cut to at most `max` cells.
+pub fn width(toast: &Toast, max: usize) -> usize { grid::width(&grid::clip(&toast.text, max.saturating_sub(2))) + 2 }
+
+/// The toast as a one-row block at most `max` cells wide.
+pub fn toast(ui: &Ui, toast: &Toast, max: usize) -> El {
     let p = &ui.p;
-    let text = grid::clip(&toast.text, cols.saturating_sub(4));
+    let text = grid::clip(&toast.text, max.saturating_sub(2));
     let width = grid::width(&text) + 2;
     let ink = if toast.error { p.error } else { p.text };
-    let line = Line::new().gap(1).put(&text, ink).gap(1).fill(0, width, p.chrome).el(ui, width);
-    el().size(g.x(cols), g.cell_h).inert().child(
-        line.key("toast").role("status").label(text).live_region(LiveRegion::Polite).absolute(g.x(cols.saturating_sub(width + 1)), 0.0),
-    )
+    Line::new().gap(1).put(&text, ink).gap(1).fill(0, width, p.chrome).el(ui, width)
+        .key("toast").role("status").label(text).live_region(LiveRegion::Polite)
 }

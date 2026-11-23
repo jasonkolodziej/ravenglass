@@ -244,6 +244,31 @@ impl PaneTree {
         }
         if walk(&mut self.root, area, focus, dir.axis(), delta) { Ok(()) } else { Err(PaneError::NoSplit) }
     }
+
+    /// Drag a gutter: put divider `index` (its place in [`Layout::gutters`]) on cell `cell`
+    /// (a column for a column split, a row for a row split), within the panes' minimums.
+    /// True when the divider moved.
+    pub fn drag_gutter(&mut self, index: usize, cell: usize, area: Rect) -> bool {
+        // Mirrors `place`: children first, then the split's own gutter.
+        fn walk(n: &mut Node, area: Rect, seen: &mut usize, index: usize, cell: usize) -> Option<bool> {
+            if area.is_empty() { return None; }
+            let Node::Split { axis, ratio, a, b } = n else { return None };
+            let (ra, rb, gutter) = divide(*axis, *ratio, area);
+            if let Some(moved) = walk(a, ra, seen, index, cell) { return Some(moved); }
+            if let Some(moved) = walk(b, rb, seen, index, cell) { return Some(moved); }
+            gutter?;
+            if *seen != index {
+                *seen += 1;
+                return None;
+            }
+            let (origin, total, min, size_a) = match axis { Axis::Cols => (area.x, area.w, MIN_COLS, ra.w), Axis::Rows => (area.y, area.h, MIN_ROWS, ra.h) };
+            let free = total - GUTTER;
+            let next = cell.saturating_sub(origin).clamp(min, free - min);
+            if next != size_a { *ratio = next as f32 / free as f32; }
+            Some(next != size_a)
+        }
+        walk(&mut self.root, area, &mut 0, index, cell).unwrap_or(false)
+    }
 }
 
 /// The two halves of `area` and the gutter between them. Sizes are whole cells; when the area is

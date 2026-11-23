@@ -65,8 +65,9 @@ fn dates_read_as_the_grid_shows_them() {
     assert_eq!(timefmt::long(now), "Fri 13 Nov 2026 16:44");
     assert_eq!(timefmt::short(now - 3_600, now), "15:44");
     assert_eq!(timefmt::short(now - 86_400, now), "Thu");
-    assert_eq!(timefmt::short(now - 20 * 86_400, now), "24Oct");
-    assert_eq!(grid::width(&timefmt::short(now - 400 * 86_400, now)), 5);
+    assert_eq!(timefmt::short(now - 20 * 86_400, now), "24 Oct");
+    assert_eq!(timefmt::short(now - 400 * 86_400, now), "Oct 25");
+    assert!(grid::width(&timefmt::short(now - 400 * 86_400, now)) <= 6);
     assert_eq!(timefmt::bytes(2_100_000), "2.1 MB");
     assert_eq!(timefmt::bytes(840_000), "840 KB");
 }

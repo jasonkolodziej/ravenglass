@@ -199,6 +199,47 @@ fn a_narrow_window_shows_one_pane() {
 }
 
 #[test]
+fn dragging_the_gutter_resizes_panes_in_whole_cells() {
+    let mut rt = runtime();
+    let g = rt.state.frame.get().grid;
+    let width = |rt: &Runtime<AppState>| keyed(&rt.elements(), "pane:1").unwrap().rect[2];
+    let before = width(&rt);
+    let (x, y) = rt.find("gutter:0").expect("a gutter between the panes");
+    rt.pointer_down(x, y);
+    rt.pointer_move(x - 100.0, y);
+    rt.frame(FRAME);
+    rt.pointer_up(x - 100.0, y);
+    settle(&mut rt);
+    let after = width(&rt);
+    let moved = (before - after) / g.cell_w;
+    assert!((moved - moved.round()).abs() < 0.01 && (11.0..=12.0).contains(&moved.round()), "moved {moved} cells");
+    assert!(((after / g.cell_w).round() * g.cell_w - after).abs() < 0.01, "the list is still a whole number of cells wide");
+}
+
+#[test]
+fn clicking_a_row_selects_it_and_a_tab_or_workspace_switches() {
+    let mut rt = runtime();
+    let third = AppState::row_key(1, &rt.state.rows()[2].id);
+    let (x, y) = rt.find(&third).expect("the third row");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    settle(&mut rt);
+    assert_eq!(rt.state.ws().sel, 2);
+    assert_eq!(selected_rows(&rt), [third]);
+    let (x, y) = rt.find("ws:2").unwrap();
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    settle(&mut rt);
+    assert_eq!(rt.state.ws().name, "Gmail");
+    let (x, y) = rt.find("rail:rg-theme").unwrap();
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    settle(&mut rt);
+    assert_eq!(rt.state.theme.id, "ravenglass-frost");
+    assert_eq!(text_in(&rt.elements(), "toast"), "theme: Ravenglass Frost");
+}
+
+#[test]
 fn the_palette_lists_actions_with_their_keys() {
     let rt = scene("palette", (1400.0, 880.0));
     let els = rt.elements();

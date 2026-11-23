@@ -133,6 +133,26 @@ fn the_inner_split_resizes_before_the_outer_one() {
 }
 
 #[test]
+fn dragging_a_gutter_puts_the_divider_on_the_cell_under_the_pointer() {
+    let mut tree = PaneTree::mail();
+    tree.set_focus(2);
+    let below = tree.split(Axis::Rows, Kind::Empty, AREA).unwrap();
+    // Gutters are listed children first: the row split inside the right column, then the columns.
+    let gutters = tree.layout(AREA).gutters;
+    assert_eq!(gutters.iter().map(|g| g.axis).collect::<Vec<_>>(), [Axis::Rows, Axis::Cols]);
+    assert!(tree.drag_gutter(1, 60, AREA));
+    assert_eq!(tree.layout(AREA).gutters[1].rect.x, 60);
+    assert_eq!(rect(&tree, 1).w, 60);
+    assert!(!tree.drag_gutter(1, 60, AREA), "the same cell moves nothing");
+    assert!(tree.drag_gutter(0, 12, AREA));
+    assert_eq!(tree.layout(AREA).gutters[0].rect.y, 12);
+    assert_eq!((rect(&tree, 2).h, rect(&tree, below).y), (10, 13));
+    tree.drag_gutter(1, 0, AREA);
+    assert_eq!(rect(&tree, 1).w, MIN_COLS, "a drag past the edge stops at the minimum");
+    assert!(!tree.drag_gutter(7, 30, AREA), "no such gutter");
+}
+
+#[test]
 fn the_ratio_follows_a_window_resize() {
     let mut tree = PaneTree::mail();
     tree.resize(Dir::Left, 19, AREA).unwrap();

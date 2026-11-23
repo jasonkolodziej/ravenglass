@@ -63,7 +63,11 @@ pub fn rail(ui: &Ui, rows: usize) -> El {
             .size(w, g.y(2))
             .center()
             .child(icon(glyph, size).color(p.muted))
-            .on_press(move |s: &mut AppState| s.perform(action.clone()));
+            .on_press_tx(move |s: &mut AppState, tx| {
+                s.clock = tx.clock();
+                s.perform(action.clone());
+                crate::flush(s, tx);
+            });
         rail = rail.child(slot);
     }
     rail

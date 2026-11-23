@@ -43,13 +43,27 @@ pub fn bar(s: &AppState, ui: &Ui, cols: usize) -> El {
         let item = Line::new().put(&slot.to_string(), digit).gap(1).put(&ws.name, name).el(ui, width)
             .key(format!("ws:{slot}")).role("tab").label(format!("Workspace {slot}: {}", ws.name)).checked(active)
             .absolute(g.x(col), y)
-            .on_press(move |s: &mut AppState| s.perform(crate::actions::Action::Workspace(slot)));
+            .on_press_tx(move |s: &mut AppState, tx| {
+                s.clock = tx.clock();
+                s.perform(crate::actions::Action::Workspace(slot));
+                crate::flush(s, tx);
+            });
         bar = bar.child(item);
         col += width + 2;
     }
+    let mut right = cols;
     if state_cols < cols {
         let line = Line::new().mark(Mark::Sync, ui.p.muted).gap(1).put(&state, ui.p.muted).el(ui, state_cols - 2);
-        bar = bar.child(line.key("sync").label(state).absolute(g.x(cols - state_cols), y));
+        right = cols - state_cols;
+        bar = bar.child(line.key("sync").label(state).absolute(g.x(right), y));
+    }
+    // The toast takes the room between the slots and the sync state.
+    if let Some(toast) = &s.toast {
+        let room = right.saturating_sub(col + 2);
+        if room >= 12 {
+            let width = super::toast::width(toast, room);
+            bar = bar.child(super::toast::toast(ui, toast, room).absolute(g.x(right - width - 2), y));
+        }
     }
     bar
 }

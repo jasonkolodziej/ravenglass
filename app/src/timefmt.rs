@@ -26,13 +26,14 @@ pub fn clock(t: Timestamp) -> String {
     format!("{:02}:{:02}", secs / 3_600, secs % 3_600 / 60)
 }
 
-/// The list's five-cell time column: the time today, the weekday this week, else the date.
+/// The list's time column (six cells at most): the time today, the weekday this week, the day
+/// this year (`9 Oct`), else the month and year (`Oct 25`).
 pub fn short(t: Timestamp, now: Timestamp) -> String {
     let (day, today) = (t.div_euclid(DAY), now.div_euclid(DAY));
     if day == today { return clock(t); }
     if day < today && today - day < 7 { return weekday(day).to_owned(); }
-    let (_, month, d) = civil(day);
-    format!("{d:02}{}", MONTHS[month - 1])
+    let (year, month, d) = civil(day);
+    if year == civil(today).0 { format!("{d} {}", MONTHS[month - 1]) } else { format!("{} {:02}", MONTHS[month - 1], year.rem_euclid(100)) }
 }
 
 /// The reader's Date header: `Fri 13 Nov 2026 10:40`.
