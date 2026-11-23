@@ -1,0 +1,67 @@
+# Ravenglass theme — Frost
+# Model (same as the reference IDE): every colour the UI draws is one of 16 named
+# palette colours plus background/foreground/cursor. [roles] maps UI parts to names;
+# a user theme may override any palette entry, any role, or both. Missing keys
+# fall back to the base theme, so a theme can be two lines long.
+name = "Ravenglass Frost"
+id = "ravenglass-frost"
+appearance = "light"
+version = 1
+
+[palette]
+background = "#F4F5FB"
+foreground = "#17142A"
+cursor     = "#1F6FBF"
+black      = "#F4F5FB"
+gray       = "#E2E4F3"
+silver     = "#6B6787"
+white      = "#17142A"
+maroon     = "#A12A3E"
+red        = "#C8344B"
+green      = "#1C6B42"
+lime       = "#22804F"
+olive      = "#7A5005"
+yellow     = "#93600A"
+navy       = "#D9DBF2"
+blue       = "#4E48A0"
+purple     = "#3A3580"
+fuchsia    = "#8A3FBF"
+teal       = "#155A9E"
+aqua       = "#1F6FBF"
+
+[roles]
+"ui.bg"              = "background"
+"ui.text"            = "foreground"
+"ui.muted"           = "silver"
+"ui.chrome"          = "gray"
+"ui.border"          = "gray"
+"ui.selection"       = "navy"
+"ui.accent"          = "aqua"
+"ui.focusBar"        = "aqua"
+"ui.brand"           = "blue"
+"mode.normal"        = "aqua"
+"mode.compose"       = "lime"
+"mode.search"        = "yellow"
+"mode.visual"        = "fuchsia"
+"mail.unread"        = "aqua"
+"mail.flag"          = "yellow"
+"mail.attachment"    = "blue"
+"mail.quote"         = "silver"
+"mail.link"          = "aqua"
+"mail.header.key"    = "blue"
+"state.ok"           = "lime"
+"state.warn"         = "yellow"
+"state.error"        = "red"
+"wallpaper"          = "blue"
+"glass.tint"         = "navy"
+
+[ui]
+font = "IBM Plex Mono"        # ships inside Rune (crates/rune/assets)
+font_size = 14
+line_height = 1.35
+window_opacity = 1.0          # < 1.0 = Glasshouse-style translucent window
+window_blur = 0               # backdrop blur radius when translucent
+wallpaper = "braille"         # braille | etched | silhouette | none | path to PNG/ASCII
+wallpaper_role = "wallpaper"
+wallpaper_opacity = 0.75
+intro = true                  # braille dots assemble the raven at launch

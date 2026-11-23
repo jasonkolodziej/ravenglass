@@ -1,0 +1,13 @@
+# Local IMAP/SMTP for mail-imap integration tests (plan §5).
+# docker compose -f tools/docker-compose.yml up -d
+# IMAP 3143 (plain) / 3993 (TLS), SMTP 3025 / 3465. Users are created on first login.
+services:
+  greenmail:
+    image: greenmail/standalone:latest   # pin a current tag once verified
+    environment:
+      - GREENMAIL_OPTS=-Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled -Dgreenmail.verbose
+    ports:
+      - "3025:3025"
+      - "3143:3143"
+      - "3465:3465"
+      - "3993:3993"

@@ -1,0 +1,25 @@
+name: Rust
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libxkbcommon-x11-0 mesa-vulkan-drivers
+      - uses: dtolnay/rust-toolchain@master
+        with: { toolchain: "1.99.1", components: "clippy, rustfmt" }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Headless snapshots
+        run: |
+          cargo run --release -- --snap out/night.png --size 1400x880 --scale 2
+          cargo run --release -- --snap out/frost.png --scene frost --size 1400x880 --scale 2
+      - uses: actions/upload-artifact@v4
+        with: { name: "snapshots-${{ matrix.os }}", path: out/ }
