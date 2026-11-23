@@ -44,14 +44,14 @@ fn bring_up(kind: Kind) -> Option<Server> {
         Kind::Stalwart => ("RAVENGLASS_STALWART_TEST", "stalwart.sh", vec![3145, 3995, 3587, 3466, 3443], "Stalwart"),
     };
     if std::env::var(variable).as_deref() != Ok("1") {
-        eprintln!("mail-imap: {name} tests skipped. Run them with {variable}=1 (see tools/{script}).");
+        eprintln!("{name} tests skipped. Run them with {variable}=1 (see tools/{script}).");
         return None;
     }
     let pointer = tools_dir().join(format!(".cache/{}.dir", script.trim_end_matches(".sh")));
     if !ports.iter().all(|p| reachable(*p)) || !pointer.exists() {
         let status = std::process::Command::new(tools_dir().join(script)).arg("start").status();
         if !matches!(status, Ok(s) if s.success()) || !ports.iter().all(|p| reachable(*p)) {
-            eprintln!("mail-imap: {name} tests skipped: tools/{script} could not start the server.");
+            eprintln!("{name} tests skipped: tools/{script} could not start the server.");
             return None;
         }
     }
