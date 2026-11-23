@@ -23,3 +23,31 @@ jobs:
           cargo run --release -- --snap out/frost.png --scene frost --size 1400x880 --scale 2
       - uses: actions/upload-artifact@v4
         with: { name: "snapshots-${{ matrix.os }}", path: out/ }
+
+  # The shared crates must keep compiling for the web build (architecture §3, rule 4).
+  # This type-checks them; nothing is linked or run in a browser yet.
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with: { toolchain: "1.99.1", targets: "wasm32-unknown-unknown" }
+      - uses: Swatinem/rust-cache@v2
+      - run: >
+          cargo check --target wasm32-unknown-unknown
+          -p mail-core -p relay-proto -p relay-client -p ravenglass-theme -p ravenglass-brand
+          -p ravenglass-config -p mail-render -p mail-jmap -p mail-store -p mail-blitz -p ravenglass-engine
+      - run: cargo check --target wasm32-unknown-unknown -p mail-auth --no-default-features
+
+  # IMAP and SMTP against a real server (GreenMail, started by tools/greenmail.sh).
+  imap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: dtolnay/rust-toolchain@master
+        with: { toolchain: "1.99.1" }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p mail-imap
+        env: { RAVENGLASS_IMAP_TEST: "1" }

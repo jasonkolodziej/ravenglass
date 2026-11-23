@@ -52,7 +52,7 @@ getrandom = "0.4"
 base64 = "0.22"
 roxmltree = "0.20"
 mail-parser = "1"
-mail-builder = "2"
+mail-builder = { version = "2", default-features = false }
 ammonia = "4"
 rusqlite = { version = "0.43", features = ["bundled"] }
 # mail-imap: IMAP + SMTP over tokio and rustls (ring, webpki roots).
