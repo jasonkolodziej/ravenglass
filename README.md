@@ -57,7 +57,7 @@ cargo run -- --profile /tmp/rg                 # a fresh profile: then `:account
 cargo run -- --snap out/night.png --scene default --size 1400x880 --scale 2   # headless; --list-scenes for all
 ```
 
-Licence: MIT OR Apache-2.0 (proposed). Bundled third-party: IBM Plex Mono (OFL, `assets/fonts/`), Rune docs (MIT, `docs/reference/rune-LICENSE`).
+Licence: MIT (`LICENSE`). Bundled third-party: IBM Plex Mono (OFL, `assets/fonts/`), Rune docs (MIT, `docs/reference/rune-LICENSE`).
 
 ## Repository tooling
 
